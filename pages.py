@@ -813,7 +813,6 @@ body{background:radial-gradient(900px 500px at 75% -10%,rgba(124,92,255,.10),tra
       <div class="tab" data-pg="clientmgr"><i class="ti ti-user-plus"></i><span data-i18n="nav_clientmgr">ساخت کلاینت</span></div>
       <div class="tab" data-pg="categories"><i class="ti ti-category"></i><span data-i18n="nav_categories">دسته‌بندی‌ها</span></div>
       <div class="tab" data-pg="subgroups"><i class="ti ti-folders"></i><span data-i18n="nav_subgroups">گروه‌های ساب</span><span class="bd" id="nb-subs">0</span></div>
-      <div class="tab tab-locked" data-pg="plans" title="در نسخه‌های بعد فعال می‌شود"><i class="ti ti-lock"></i><span data-i18n="nav_plans">پلن‌های فروش</span><span class="bd">بعداً</span></div>
       <div class="tab" data-pg="reports"><i class="ti ti-chart-histogram"></i><span data-i18n="nav_reports">گزارش‌ها</span></div>
       <div class="tab" data-pg="nodes"><i class="ti ti-server-cog"></i><span data-i18n="nav_nodes">نودها</span></div>
       <div class="tab" data-pg="admins"><i class="ti ti-users-group"></i><span data-i18n="nav_admins">ادمین‌ها</span></div>
@@ -846,7 +845,7 @@ body{background:radial-gradient(900px 500px at 75% -10%,rgba(124,92,255,.10),tra
 
     <!-- OVERVIEW -->
     <div class="page on" id="pg-overview">
-      <div class="pg-head"><div><div class="eyebrow"><span class="live-dot"></span> LIVE SYSTEM MONITOR</div><h1>مرکز کنترل VodiWalker</h1><p>نمای لحظه‌ای منابع سرور، ترافیک، اتصال‌ها و سرویس فروش.</p></div>
+      <div class="pg-head"><div><div class="eyebrow"><span class="live-dot"></span> LIVE SYSTEM MONITOR</div><h1>مرکز کنترل VodiWalker</h1><p>نمای لحظه‌ای منابع سرور، ترافیک و اتصال‌ها.</p></div>
         <div class="toolbar"><button class="btn" onclick="refreshOverview()"><i class="ti ti-refresh"></i>بروزرسانی</button><button class="btn primary" onclick="gotoPage('links')"><i class="ti ti-network"></i>اینباندها</button></div></div>
       <div class="ib-quickstats ov-quickstats" id="ovBizStats"></div>
       <div class="resource-grid" id="resourceGrid">
@@ -928,17 +927,9 @@ body{background:radial-gradient(900px 500px at 75% -10%,rgba(124,92,255,.10),tra
       <div class="card"><table><thead><tr><th>نام گروه</th><th>تعداد کانفیگ</th><th>لینک عمومی</th><th></th></tr></thead><tbody id="subsBody"></tbody></table></div>
     </div>
 
-    <!-- PLANS -->
-    <div class="page" id="pg-plans">
-      <div class="pg-head"><div><h1>پلن‌های فروش</h1><p>پلن‌هایی که در ربات فروش تلگرام نمایش داده می‌شوند</p></div>
-        <div class="toolbar"><button class="btn primary" onclick="openPlanDrawer()"><i class="ti ti-plus"></i>پلن جدید</button></div>
-      </div>
-      <div class="card"><table><thead><tr><th>نام</th><th>مدت</th><th>حجم</th><th>سرعت</th><th>قیمت (⭐)</th><th>ویژه</th><th></th></tr></thead><tbody id="plansBody"></tbody></table></div>
-    </div>
-
     <!-- REPORTS -->
     <div class="page" id="pg-reports">
-      <div class="pg-head"><div><h1>گزارش‌ها</h1><p>خلاصه‌ی عملکرد فروش و کانفیگ‌ها</p></div>
+      <div class="pg-head"><div><h1>گزارش‌ها</h1><p>خلاصه‌ی عملکرد کانفیگ‌ها</p></div>
         <div class="toolbar">
           <select class="sel" id="repDays" onchange="loadReports()"><option value="7">۷ روز اخیر</option><option value="14" selected>۱۴ روز اخیر</option><option value="30">۳۰ روز اخیر</option></select>
           <a class="btn" href="/api/reports/export.csv"><i class="ti ti-download"></i>خروجی CSV</a>
@@ -1081,7 +1072,7 @@ body{background:radial-gradient(900px 500px at 75% -10%,rgba(124,92,255,.10),tra
         <div id="proxiesListWrap"><div class="muted" style="padding:12px">در حال بارگذاری...</div></div>
       </div>
 
-      <div class="card settings-card" style="margin-top:14px"><div class="section-title">Bot Text Studio</div><p class="hint">تمام پیام‌های کلیدی ربات را از همین پنل ویرایش کن؛ تغییرات روی ربات در اجرای بعدی/ری‌استارت اعمال می‌شوند.</p><div class="bot-text-grid"><div class="grp"><label>پیام خوش‌آمد</label><textarea id="botTxtWelcome" rows="4"></textarea></div><div class="grp"><label>منوی مدیریت</label><textarea id="botTxtAdmin" rows="4"></textarea></div><div class="grp"><label>پیام ساخت کانفیگ</label><textarea id="botTxtCreated" rows="3"></textarea></div><div class="grp"><label>پیام فروشگاه</label><textarea id="botTxtStore" rows="3"></textarea></div><div class="grp"><label>پیام پرداخت موفق</label><textarea id="botTxtPayment" rows="3"></textarea></div></div><button class="btn primary" onclick="saveBotTexts()"><i class="ti ti-device-floppy"></i>ذخیره متن‌های ربات</button></div>
+      <div class="card settings-card" style="margin-top:14px"><div class="section-title">Bot Text Studio</div><p class="hint">تمام پیام‌های کلیدی ربات را از همین پنل ویرایش کن؛ تغییرات روی ربات در اجرای بعدی/ری‌استارت اعمال می‌شوند.</p><div class="bot-text-grid"><div class="grp"><label>پیام خوش‌آمد</label><textarea id="botTxtWelcome" rows="4"></textarea></div><div class="grp"><label>منوی مدیریت</label><textarea id="botTxtAdmin" rows="4"></textarea></div><div class="grp"><label>پیام ساخت کانفیگ</label><textarea id="botTxtCreated" rows="3"></textarea></div></div><button class="btn primary" onclick="saveBotTexts()"><i class="ti ti-device-floppy"></i>ذخیره متن‌های ربات</button></div>
 
       <div class="card advanced-settings" style="margin-top:14px"><div class="panel-head"><div><b>CONTROL CENTER PRO</b><small>ابزارهای حرفه‌ای برای شخصی‌سازی و نگهداری پنل</small></div><span class="badge green">PRO</span></div><div class="advanced-grid"><button class="pro-action" onclick="refreshOverview();toast('داده‌های زنده بروزرسانی شد ✓')"><i class="ti ti-activity-heartbeat"></i><b>Live Refresh</b><small>مانیتورینگ فوری منابع</small></button><button class="pro-action" onclick="loadSettings();toast('تنظیمات دوباره بارگذاری شد ✓')"><i class="ti ti-refresh"></i><b>Reload Settings</b><small>دریافت تنظیمات واقعی سرور</small></button><button class="pro-action" onclick="location.reload()"><i class="ti ti-reload"></i><b>Hard Reload</b><small>بارگذاری کامل رابط</small></button><button class="pro-action" onclick="navigator.clipboard?.writeText(location.origin);toast('دامنه پنل کپی شد ✓')"><i class="ti ti-world-copy"></i><b>Copy Panel URL</b><small>دامنه فعلی پنل</small></button></div></div>
     </div>
@@ -1114,7 +1105,7 @@ function toast(msg, ok=true){
 }
 // وقتی یک «نود» برای مدیریت انتخاب شده، APIهای عملیاتی از طریق پنل اصلی روی نود اجرا می‌شن.
 const ACTIVE_NODE = (()=>{ try{ return JSON.parse(sessionStorage.getItem('vw_active_node')||'null'); }catch(e){ return null; } })();
-const NODE_FWD_PREFIXES = ['/api/links','/api/proxies','/api/subs','/api/categories','/api/protocols','/api/reality-keypair','/api/connections','/api/telemetry','/api/system','/api/network','/api/reports','/api/activity','/api/errors','/api/plans','/stats'];
+const NODE_FWD_PREFIXES = ['/api/links','/api/proxies','/api/subs','/api/categories','/api/protocols','/api/reality-keypair','/api/connections','/api/telemetry','/api/system','/api/network','/api/reports','/api/activity','/api/errors','/stats'];
 function nodeRewrite(path){
   if(!ACTIVE_NODE) return path;
   const p = String(path).split('?')[0].replace(/\/+$/,'');
@@ -1159,7 +1150,6 @@ document.querySelectorAll('.tab').forEach(t=>{
   t.addEventListener('click', ()=> gotoPage(t.dataset.pg));
 });
 function gotoPage(pg){
-  if(pg==='plans'){ openDrawer('پلن‌های فروش', `<div class=\"feature-lock\"><div class=\"feature-lock-icon\"><i class=\"ti ti-lock-star\"></i></div><h3>این بخش در حال توسعه است</h3><p>ماژول فروش اشتراک در نسخه‌های بعدی VodiWalker فعال خواهد شد. فعلاً مدیریت سرویس، اینباند، کلاینت و سابسکریپشن بدون وابستگی به فروش در دسترس است.</p><div class=\"feature-lock-note\"><i class=\"ti ti-sparkles\"></i> Coming in a future release</div></div>`, `<button class=\"btn\" style=\"flex:1\" onclick=\"closeDrawer()\"><i class=\"ti ti-check\"></i>متوجه شدم</button>`); return; }
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on', t.dataset.pg===pg));
   document.querySelectorAll('.page').forEach(p=>p.classList.toggle('on', p.id==='pg-'+pg));
   CURRENT_PAGE = pg;
@@ -1234,43 +1224,41 @@ var DASH_I18N = {
   fa: {
     dir:'rtl', brand:'VodiWalker',
     nav_overview:'داشبورد', nav_links:'اینباندها', nav_clientmgr:'ساخت کلاینت', nav_categories:'دسته‌بندی‌ها', nav_subgroups:'گروه‌های ساب',
-    nav_plans:'پلن‌های فروش', nav_reports:'گزارش‌ها', nav_admins:'ادمین‌ها', nav_nodes:'نودها', nav_activity:'فعالیت‌ها', nav_messages:'پیام‌ها', nav_settings:'تنظیمات',
-    pt_overview:'وضعیت لحظه‌ای سرویس، کانفیگ‌ها و ربات فروش',
+    nav_reports:'گزارش‌ها', nav_admins:'ادمین‌ها', nav_nodes:'نودها', nav_activity:'فعالیت‌ها', nav_messages:'پیام‌ها', nav_settings:'تنظیمات',
+    pt_overview:'وضعیت لحظه‌ای سرویس، کانفیگ‌ها و ربات تلگرام',
     pt_links:'مدیریت حرفه‌ای اینباندها، کلاینت‌ها و لینک‌های اشتراک',
     pt_clientmgr:'ساخت کلاینت واقعی از روی اینباند دلخواه، جدا از صفحه اینباندها',
     pt_categories:'پیش‌فرض‌های حجم، انقضا و محدودیت برای گروه‌های کانفیگ',
     pt_subgroups:'ترکیب چند کانفیگ در یک لینک اشتراک واحد',
-    pt_plans:'پلن‌هایی که در ربات فروش تلگرام نمایش داده می‌شوند',
-    pt_reports:'خلاصه‌ی عملکرد فروش و کانفیگ‌ها',
+    pt_reports:'خلاصه‌ی عملکرد کانفیگ‌ها',
     pt_admins:'حساب‌های دسترسی جانبی به پنل (فقط مالک)',
     pt_nodes:'اتصال چند پنل VodiWalker به هم و مدیریت یکجا',
     pt_activity:'۱۵۰ رویداد اخیر پنل',
     pt_messages:'مرکز خطاها، هشدارها و پیام‌های سیستم',
-    pt_settings:'آدرس عمومی پنل، ربات فروش تلگرام و رمز عبور'
+    pt_settings:'آدرس عمومی پنل، ربات تلگرام و رمز عبور'
   },
   en: {
     dir:'ltr', brand:'VodiWalker',
     nav_overview:'Overview', nav_links:'Inbounds', nav_clientmgr:'Create Client', nav_categories:'Categories', nav_subgroups:'Sub Groups',
     nav_plans:'Sale Plans', nav_reports:'Reports', nav_admins:'Admins', nav_nodes:'Nodes', nav_activity:'Activity', nav_messages:'Messages', nav_settings:'Settings',
-    pt_overview:'Live status of the service, configs and sales bot',
+    pt_overview:'Live status of the service, configs and Telegram bot',
     pt_links:'Manage inbounds, clients and subscription links',
     pt_clientmgr:'Create a real client from any inbound, separate from the inbounds page',
     pt_categories:'Default traffic, expiry and IP-limit presets for config groups',
     pt_subgroups:'Combine several configs into one subscription link',
-    pt_plans:'Plans shown in the Telegram sales bot',
     pt_reports:'Summary of sales and config performance',
     pt_admins:'Secondary panel access accounts (owner only)',
     pt_nodes:'Connect several VodiWalker panels and manage them from one place',
     pt_activity:'Last 150 panel events',
     pt_messages:'Errors, warnings and system messages',
-    pt_settings:'Panel public URL, Telegram sales bot and password'
+    pt_settings:'Panel public URL, Telegram bot and password'
   }
 };
 var CURRENT_PAGE = 'overview';
 const DASH_EN_TERMS = {
   // Navigation / pages
   'داشبورد':'Dashboard','اینباندها':'Inbounds','اینباند':'Inbound','دسته‌بندی‌ها':'Categories','دسته‌بندی':'Category',
-  'گروه‌های ساب':'Subscription Groups','گروه ساب':'Subscription Group','گروه جدید':'New Group','پلن‌های فروش':'Sales Plans','پلن فروش':'Sales Plan','پلن جدید':'New Plan',
+  'گروه‌های ساب':'Subscription Groups','گروه ساب':'Subscription Group','گروه جدید':'New Group',
   'گزارش‌ها':'Reports','ادمین‌ها':'Admins','ادمین':'Admin','ادمین جدید':'New Admin','مالک':'Owner','فعالیت‌ها':'Activity','فعالیت':'Activity','پیام‌ها':'Messages','تنظیمات':'Settings',
   'مرکز کنترل':'Control Center','مرکز پیام و خطا':'Message & Error Center','مدیریت حساب‌ها':'Admin Management','مدیریت حساب':'Admin Management',
   'تنظیمات و استودیو ظاهر':'Settings & Appearance Studio','استودیو ظاهر':'Appearance Studio',
@@ -1282,17 +1270,16 @@ const DASH_EN_TERMS = {
   'شروع':'Start','توقف':'Stop','فعال‌سازی':'Enable','غیرفعال‌سازی':'Disable','عملیات':'Actions','کنترل':'Control','جزئیات':'Details','بستن':'Close','بارگذاری کامل رابط':'Hard Reload','بازنشانی ظاهر':'Reset Appearance','بارگذاری دوباره':'Reload',
 
   // Titles / descriptions
-  'وضعیت لحظه‌ای سرویس، کانفیگ‌ها و ربات فروش':'Live service, configuration and sales-bot status',
+  'وضعیت لحظه‌ای سرویس، کانفیگ‌ها و ربات تلگرام':'Live service, configuration and Telegram bot status',
   'مدیریت حرفه‌ای اینباندها، کلاینت‌ها و لینک‌های اشتراک':'Professional inbound, client and subscription management',
   'پیش‌فرض‌های حجم، انقضا و محدودیت برای گروه‌های کانفیگ':'Traffic, expiry and limit presets for config groups',
   'ترکیب چند کانفیگ در یک لینک اشتراک واحد':'Combine multiple configs into one subscription link',
-  'پلن‌هایی که در ربات فروش تلگرام نمایش داده می‌شوند':'Plans shown in the Telegram sales bot',
-  'خلاصه‌ی عملکرد فروش و کانفیگ‌ها':'Sales and configuration performance',
+  'خلاصه‌ی عملکرد کانفیگ‌ها':'Configuration performance',
   'حساب‌های دسترسی جانبی به پنل (فقط مالک)':'Secondary panel access accounts (owner only)',
   '۱۵۰ رویداد اخیر پنل':'Latest 150 panel events',
   'مرکز خطاها، هشدارها و پیام‌های سیستم':'Errors, warnings and system messages',
-  'آدرس عمومی پنل، ربات فروش تلگرام و رمز عبور':'Panel public URL, Telegram sales bot and account security',
-  'نمای لحظه‌ای منابع سرور، ترافیک، اتصال‌ها و سرویس فروش.':'Live server resources, traffic, connections and sales service.',
+  'آدرس عمومی پنل، ربات تلگرام و رمز عبور':'Panel public URL, Telegram bot and account security',
+  'نمای لحظه‌ای منابع سرور، ترافیک، اتصال‌ها.':'Live server resources, traffic and connections.',
   'مرکز مدیریت اینباند، ساخت کلاینت و کنترل دسترسی؛ با پایش زنده هر ۵ ثانیه.':'Inbound management, client creation and access control with live monitoring every 5 seconds.',
   'تمام خطاهای سرور، خطاهای مرورگر و رویدادهای مهم اینجا جمع می‌شوند تا هیچ خطایی گم نشود.':'All server errors, browser errors and important events are collected here.',
   'ظاهر، فونت، رنگ، تراکم، زبان و تنظیمات عملیاتی پنل را از یکجا کنترل کن.':'Control appearance, font, colors, density, language and operational settings from one place.',
@@ -1304,13 +1291,13 @@ const DASH_EN_TERMS = {
   'ابزارهای حرفه‌ای برای شخصی‌سازی و نگهداری پنل':'Professional tools for panel personalization and maintenance',
 
   // Dashboard metrics
-  'کل اینباندها':'Total Inbounds','مشتریان فروشگاه':'Store Customers','فروش (Stars)':'Sales (Stars)','پرمصرف‌ترین کانفیگ‌های ۷ روز اخیر':'Top configs from the last 7 days',
+  'کل اینباندها':'Total Inbounds','پرمصرف‌ترین کانفیگ‌های ۷ روز اخیر':'Top configs from the last 7 days',
   'پرمصرف‌ترین کانفیگ‌ها':'Top Configs by Usage','خطاهای ثبت‌شده':'Recorded Errors','خطاهای Backend و Frontend با جزئیات مسیر و زمان':'Backend and frontend errors with route and time details',
   'رویدادهای مهم':'Important Events','آخرین فعالیت‌های پنل برای عیب‌یابی سریع':'Recent panel activity for quick troubleshooting',
   'وضعیت سیستم':'System Status','سیستم سالم است.':'System is healthy.','خطای ثبت‌شده‌ای وجود ندارد. سیستم سالم است.':'No recorded errors. System is healthy.','رویدادی وجود ندارد.':'No events found.','لاگی وجود ندارد':'No activity logs.','داده‌ای موجود نیست':'No data available.','هنوز داده‌ی مصرفی ثبت نشده':'No usage data recorded yet.','کانفیگی یافت نشد':'No configs found.','گروهی وجود ندارد':'No groups found.','پلنی وجود ندارد':'No plans found.',
   'همگام‌سازی خودکار':'Auto Sync','آخرین بروزرسانی':'Last Updated','۳۰ روز اخیر':'Last 30 days','۱۴ روز اخیر':'Last 14 days','۷ روز اخیر':'Last 7 days',
   'در حال ذخیره...':'Saving...','تغییر امن رمز':'Change Password','تغییر نام کاربری':'Change Username','نام کاربری پنل':'Panel Username','نام کاربری جدید':'New Username','رمز عبور':'Password','رمز فعلی':'Current Password','رمز جدید':'New Password','تکرار رمز جدید':'Repeat New Password','تکرار رمز عبور':'Repeat Password','امنیت حساب':'Account Security',
-  'پیام خوش‌آمد':'Welcome Message','منوی مدیریت':'Admin Menu','پیام ساخت کانفیگ':'Config Created Message','پیام فروشگاه':'Store Message','پیام پرداخت موفق':'Payment Success Message',
+  'پیام خوش‌آمد':'Welcome Message','منوی مدیریت':'Admin Menu','پیام ساخت کانفیگ':'Config Created Message',
   'آدرس عمومی پنل':'Panel Public URL','دامنه فعلی پنل':'Current panel domain','ذخیره شد':'Saved','ذخیره شد ✓':'Saved ✓','ساخته شد':'Created','حذف شد':'Deleted','بروزرسانی شد':'Updated','کپی شد':'Copied','کپی شد ✓':'Copied ✓','تنظیمات دوباره بارگذاری شد ✓':'Settings reloaded ✓','داده‌های زنده بروزرسانی شد ✓':'Live data refreshed ✓','دامنه پنل کپی شد ✓':'Panel URL copied ✓','نام کاربری با موفقیت تغییر کرد ✓':'Username changed successfully ✓','رمز عبور با موفقیت تغییر کرد ✓':'Password changed successfully ✓',
 
   // Tables / forms
@@ -1847,8 +1834,8 @@ async function refreshOverview(){
     $('ovBizStats').innerHTML = `
       <div><i class="ti ti-network"></i><span><b>${t.links||0}</b><small>کل اینباندها</small></span></div>
       <div><i class="ti ti-circle-check"></i><span><b>${t.active_links||0}</b><small>فعال</small></span></div>
-      <div><i class="ti ti-users"></i><span><b>${t.customers||0}</b><small>مشتریان فروشگاه</small></span></div>
-      <div><i class="ti ti-star"></i><span><b>${t.stars||0}</b><small>فروش (Stars) · ${t.orders||0} سفارش</small></span></div>`;
+      <div><i class="ti ti-folders"></i><span><b>${t.subs||0}</b><small>گروه‌های ساب</small></span></div>
+      <div><i class="ti ti-users-group"></i><span><b>${t.admins||0}</b><small>ادمین‌ها</small></span></div>`;
     const top = (rep.top_links||[]).slice(0,6);
     if(!top.length){
       $('ovTopLinks').innerHTML = '<div class="ov-empty">هنوز داده‌ی مصرفی ثبت نشده</div>';
@@ -3170,47 +3157,6 @@ async function submitAddRemoteMembers(subId, nodeId){
 }
 
 // ============================================================
-// PLANS
-// ============================================================
-async function loadPlans(){
-  try{
-    const res = await api('/api/plans');
-    const plans = res.plans||[];
-    $('plansBody').innerHTML = plans.map(p=>`
-      <tr><td>${escapeHtml(p.name)}</td><td>${p.days} روز</td><td>${p.volume_gb} GB</td><td>${p.speed_mbps||0} Mbps</td>
-      <td>⭐ ${p.stars}</td><td>${p.featured?'<span class="badge green">بله</span>':'—'}</td>
-      <td><div class="row-actions">
-        <button class="iconbtn" onclick="openPlanDrawer('${p.id}')"><i class="ti ti-pencil"></i></button>
-        <button class="iconbtn" onclick="deletePlan('${p.id}')"><i class="ti ti-trash" style="color:var(--bad)"></i></button>
-      </div></td></tr>
-    `).join('') || `<tr><td colspan="7" class="empty">پلنی وجود ندارد</td></tr>`;
-  }catch(e){ toast(e.message, false); }
-}
-function openPlanDrawer(pid){
-  openDrawer(pid?'ویرایش پلن':'پلن جدید', `
-    <div class="grp"><label>نام</label><input id="pName"></div>
-    <div class="row2"><div class="grp"><label>مدت (روز)</label><input id="pDays" type="number" value="30"></div>
-    <div class="grp"><label>حجم (GB)</label><input id="pVolume" type="number" value="50"></div></div>
-    <div class="row2"><div class="grp"><label>سرعت (Mbps، 0=نامحدود)</label><input id="pSpeed" type="number" value="0"></div>
-    <div class="grp"><label>قیمت (Stars)</label><input id="pStars" type="number" value="99"></div></div>
-    <label class="chk"><input type="checkbox" id="pFeatured"> پیشنهاد ویژه</label>
-  `, `<button class="btn primary" style="flex:1" onclick="submitPlan('${pid||''}')"><i class="ti ti-device-floppy"></i>ذخیره</button>`);
-}
-async function submitPlan(pid){
-  const body = {name:$('pName').value, days:$('pDays').value, volume_gb:$('pVolume').value, speed_mbps:$('pSpeed').value, stars:$('pStars').value, featured:$('pFeatured').checked};
-  try{
-    if(pid){ await api(`/api/plans/${pid}`, {method:'PATCH', body:JSON.stringify(body)}); }
-    else{ await api('/api/plans', {method:'POST', body:JSON.stringify(body)}); }
-    toast('ذخیره شد'); closeDrawer(); loadPlans();
-  }catch(e){ toast(e.message, false); }
-}
-async function deletePlan(pid){
-  if(!confirm(t('این پلن حذف شود؟'))) return;
-  try{ await api(`/api/plans/${pid}`, {method:'DELETE'}); toast('حذف شد'); loadPlans(); }
-  catch(e){ toast(e.message, false); }
-}
-
-// ============================================================
 // REPORTS
 // ============================================================
 async function loadReports(){
@@ -3220,9 +3166,9 @@ async function loadReports(){
     const t = res.totals||{};
     $('repStats').innerHTML = `
       ${statCard('ti-link','#4f7cff', t.links, 'کل کانفیگ‌ها')}
-      ${statCard('ti-shopping-cart','#22c58b', t.orders, 'تعداد سفارش')}
-      ${statCard('ti-star','#f5a524', t.stars, 'مجموع ⭐ فروش')}
-      ${statCard('ti-users','#4f7cff', t.customers, 'مشتری‌ها')}
+      ${statCard('ti-circle-check','#22c58b', t.active_links, 'فعال')}
+      ${statCard('ti-folders','#f5a524', t.subs, 'گروه‌های ساب')}
+      ${statCard('ti-users-group','#4f7cff', t.admins, 'ادمین‌ها')}
     `;
     $('repTopBody').innerHTML = (res.top_links||[]).map(l=>`
       <tr><td>${escapeHtml(l.label)}</td><td><span class="badge gray">${protoLabel(l)}</span></td><td class="mono">${fmtBytes(l.used_bytes)}</td></tr>
@@ -3233,7 +3179,7 @@ async function loadReports(){
 // ============================================================
 // ADMINS
 // ============================================================
-const ADMIN_PERM_LABELS = {dashboard:'داشبورد',inbounds:'اینباند و کلاینت',clients:'ساخت کلاینت (بخش جدا)',subscriptions:'سابسکریپشن',categories:'دسته‌بندی',plans:'پلن فروش',reports:'گزارش‌ها',messages:'پیام‌ها و خطاها',bot:'ربات',admins:'مدیریت حساب',settings:'تنظیمات'};
+const ADMIN_PERM_LABELS = {dashboard:'داشبورد',inbounds:'اینباند و کلاینت',clients:'ساخت کلاینت (بخش جدا)',subscriptions:'سابسکریپشن',categories:'دسته‌بندی',reports:'گزارش‌ها',messages:'پیام‌ها و خطاها',bot:'ربات',admins:'مدیریت حساب',settings:'تنظیمات'};
 async function loadAdmins(){
   try{
     const res = await api('/api/admins');
@@ -3280,13 +3226,13 @@ function openAdminDrawer(){
   openDrawer('ادمین جدید', `
     <div class="grp"><label>نام کاربری</label><input id="aUser"></div>
     <div class="grp"><label>رمز عبور</label><input type="password" id="aPass"></div>
-    <div class="perm-grid">${Object.entries({dashboard:'داشبورد',inbounds:'ساخت و مدیریت اینباند',clients:'ساخت کلاینت (بخش جدا)',subscriptions:'سابسکریپشن',categories:'دسته‌بندی',plans:'پلن فروش',reports:'گزارش‌ها',messages:'پیام‌ها و خطاها',bot:'ربات',admins:'مدیریت حساب',settings:'تنظیمات'}).map(([k,v])=>`<label class="perm-item"><input type="checkbox" data-perm="${k}" ${['dashboard','inbounds','subscriptions'].includes(k)?'checked':''}>${v}</label>`).join('')}</div>
+    <div class="perm-grid">${Object.entries({dashboard:'داشبورد',inbounds:'ساخت و مدیریت اینباند',clients:'ساخت کلاینت (بخش جدا)',subscriptions:'سابسکریپشن',categories:'دسته‌بندی',reports:'گزارش‌ها',messages:'پیام‌ها و خطاها',bot:'ربات',admins:'مدیریت حساب',settings:'تنظیمات'}).map(([k,v])=>`<label class="perm-item"><input type="checkbox" data-perm="${k}" ${['dashboard','inbounds','subscriptions'].includes(k)?'checked':''}>${v}</label>`).join('')}</div>
   `, `<button class="btn primary" style="flex:1" onclick="submitAdmin()"><i class="ti ti-device-floppy"></i>ساخت</button>`);
 }
 function editAdmin(id){
   const a = ADMIN_CACHE.find(x=>x.id===id); if(!a || a.role==='owner') return;
   const perms=['dashboard','inbounds','clients','subscriptions','categories','plans','reports','messages','bot','admins','settings'];
-  const labels={dashboard:'داشبورد',inbounds:'اینباند و کلاینت',clients:'ساخت کلاینت (بخش جدا)',subscriptions:'سابسکریپشن',categories:'دسته‌بندی',plans:'پلن فروش',reports:'گزارش‌ها',messages:'پیام‌ها و خطاها',bot:'ربات',admins:'مدیریت حساب',settings:'تنظیمات'};
+  const labels={dashboard:'داشبورد',inbounds:'اینباند و کلاینت',clients:'ساخت کلاینت (بخش جدا)',subscriptions:'سابسکریپشن',categories:'دسته‌بندی',reports:'گزارش‌ها',messages:'پیام‌ها و خطاها',bot:'ربات',admins:'مدیریت حساب',settings:'تنظیمات'};
   openDrawer('ویرایش ادمین', `
     <div class="grp"><label>نام کاربری</label><input id="eUser" value="${escapeHtml(a.username||'')}"></div>
     <div class="grp"><label>رمز جدید <small>(اختیاری)</small></label><input type="password" id="ePass" placeholder="بدون تغییر خالی بگذار"></div>
@@ -3354,7 +3300,7 @@ function approveAdminReq(id){
     <div class="grp"><label>نام کاربری</label><input id="arUser" value="${escapeHtml(suggestedUser)}"></div>
     <div class="grp"><label>رمز عبور</label><input id="arPass" value="${Math.random().toString(36).slice(-8)}"></div>
     <div class="grp"><label>شارژ اولیه (استارز)</label><input id="arCredit" type="number" min="0" value="0"></div>
-    <div class="perm-grid">${Object.entries({dashboard:'داشبورد',inbounds:'ساخت و مدیریت اینباند',clients:'ساخت کلاینت (بخش جدا)',subscriptions:'سابسکریپشن',categories:'دسته‌بندی',plans:'پلن فروش',reports:'گزارش‌ها',messages:'پیام‌ها و خطاها',bot:'ربات',admins:'مدیریت حساب',settings:'تنظیمات'}).map(([k,v])=>`<label class="perm-item"><input type="checkbox" data-arperm="${k}" ${['dashboard','inbounds','subscriptions'].includes(k)?'checked':''}>${v}</label>`).join('')}</div>
+    <div class="perm-grid">${Object.entries({dashboard:'داشبورد',inbounds:'ساخت و مدیریت اینباند',clients:'ساخت کلاینت (بخش جدا)',subscriptions:'سابسکریپشن',categories:'دسته‌بندی',reports:'گزارش‌ها',messages:'پیام‌ها و خطاها',bot:'ربات',admins:'مدیریت حساب',settings:'تنظیمات'}).map(([k,v])=>`<label class="perm-item"><input type="checkbox" data-arperm="${k}" ${['dashboard','inbounds','subscriptions'].includes(k)?'checked':''}>${v}</label>`).join('')}</div>
   `, `<button class="btn primary" style="flex:1" onclick="confirmApproveAdminReq('${r.id}')"><i class="ti ti-check"></i>تایید و ساخت حساب</button>`);
 }
 async function confirmApproveAdminReq(id){
@@ -3470,7 +3416,7 @@ async function loadSettings(){
     if($('subTplId')) $('subTplId').checked = !!s.sub_remark_show_id;
     if($('subTplInbound')) $('subTplInbound').checked = !!s.sub_remark_show_inbound;
     updateSubTemplatePreview();
-    try{ const bt=await api('/api/bot/texts'); const x=bt.texts||{}; if($('botTxtWelcome'))$('botTxtWelcome').value=x.welcome||''; if($('botTxtAdmin'))$('botTxtAdmin').value=x.admin_menu||''; if($('botTxtCreated'))$('botTxtCreated').value=x.config_created||''; if($('botTxtStore'))$('botTxtStore').value=x.store_intro||''; if($('botTxtPayment'))$('botTxtPayment').value=x.payment_success||''; }catch(_){}
+    try{ const bt=await api('/api/bot/texts'); const x=bt.texts||{}; if($('botTxtWelcome'))$('botTxtWelcome').value=x.welcome||''; if($('botTxtAdmin'))$('botTxtAdmin').value=x.admin_menu||''; if($('botTxtCreated'))$('botTxtCreated').value=x.config_created||''; }catch(_){}
     loadProxies();
   }catch(e){ toast(e.message, false); }
 }
@@ -3520,7 +3466,7 @@ async function botStop(){
   catch(e){ toast(e.message, false); }
 }
 async function saveBotTexts(){
-  try{ await api('/api/bot/texts',{method:'POST',body:JSON.stringify({texts:{welcome:$('botTxtWelcome').value,admin_menu:$('botTxtAdmin').value,config_created:$('botTxtCreated').value,store_intro:$('botTxtStore').value,payment_success:$('botTxtPayment').value}})}); toast('متن‌های ربات ذخیره شد ✓'); }catch(e){toast(e.message,false)}
+  try{ await api('/api/bot/texts',{method:'POST',body:JSON.stringify({texts:{welcome:$('botTxtWelcome').value,admin_menu:$('botTxtAdmin').value,config_created:$('botTxtCreated').value}})}); toast('متن‌های ربات ذخیره شد ✓'); }catch(e){toast(e.message,false)}
 }
 function toggleSettingsPass(id, btn){
   const inp = $(id);
