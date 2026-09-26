@@ -537,8 +537,8 @@ async def _handle_message(msg: dict):
     if chat_id is None:
         return
 
-    # این ربات فقط برای مدیریت پنل است؛ فروشگاه/فروش حذف شده و فقط ادمین‌های
-    # مجاز (TELEGRAM_ADMIN_IDS) اجازه‌ی استفاده دارند.
+    # این ربات فقط برای مدیریت پنل است؛ فقط ادمین‌های مجاز (TELEGRAM_ADMIN_IDS)
+    # اجازه‌ی استفاده دارند.
     if not _is_admin(chat_id):
         return
 
@@ -691,7 +691,7 @@ async def _handle_callback(cb: dict):
     if chat_id is None:
         return
 
-    # ربات فقط برای مدیریت پنل است؛ فروشگاه حذف شده و فقط ادمین‌ها دسترسی دارند.
+    # ربات فقط برای مدیریت پنل است؛ فقط ادمین‌ها دسترسی دارند.
     if not _is_admin(chat_id):
         await _answer_cb(cb_id)
         return
@@ -1079,6 +1079,12 @@ async def _poll_loop():
         try:
             res = await _call("getUpdates", offset=offset, timeout=30, allowed_updates=["message", "callback_query"])
             if not res or not res.get("ok"):
+                # علت شایع‌ترین «ربات جواب نمی‌ده»: یک وبهوک قبلاً روی این توکن ست شده
+                # و getUpdates با خطای 409 Conflict رد می‌شه. هر بار یه‌بار دیگه هم
+                # deleteWebhook رو امتحان می‌کنیم تا اگه بعداً یکی وبهوک ست کرد، خودش جمع بشه.
+                if res and "Conflict" in str(res.get("description", "")):
+                    logger.warning("Telegram bot: getUpdates conflict (webhook?) — deleting webhook and retrying")
+                    await _call("deleteWebhook", drop_pending_updates=False)
                 await asyncio.sleep(3)
                 continue
             for upd in res.get("result", []):
@@ -1110,6 +1116,11 @@ async def start_bot():
     if not ADMIN_IDS:
         logger.warning("Telegram bot: هیچ آیدی ادمینی تنظیم نشده، هیچ‌کس اجازه‌ی مدیریت نداره (ربات روشنه ولی همه رد می‌شن).")
     _client = httpx.AsyncClient(timeout=httpx.Timeout(40.0, connect=10.0))
+    # نکته‌ی مهم: اگه قبلاً (حتی توسط یک دیپلوی قدیمی یا اسکریپت دیگه) روی همین توکن
+    # webhook ست شده باشه، getUpdates همیشه با خطای 409 Conflict شکست می‌خوره و ربات
+    # به /start هیچ جوابی نمی‌ده — بدون هیچ خطای قابل‌مشاهده‌ای در پنل. برای همین قبل
+    # از شروع polling، هر وبهوکی که ست شده باشه رو پاک می‌کنیم.
+    await _call("deleteWebhook", drop_pending_updates=False)
     _running = True
     _poll_task = asyncio.create_task(_poll_loop())
 
