@@ -44,7 +44,6 @@ from fastapi.middleware.cors import CORSMiddleware
 # ============================================================
 
 APP_NAME = "VodiWalker"
-SALES_ENABLED = __import__("os").environ.get("VODIWALKER_SALES_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on")
 APP_VERSION = "27.3.0"
 
 SUPPORT_USERNAME = "@VodiWalker"
@@ -881,7 +880,7 @@ def _tcp_listen_port_snapshot() -> int:
 
 
 def _bot_settings_snapshot() -> dict:
-    """وضعیت فعلی ربات فروش رو برمی‌گردونه؛ اگه ماژول ربات هنوز ایمپورت نشده
+    """وضعیت فعلی ربات تلگرام رو برمی‌گردونه؛ اگه ماژول ربات هنوز ایمپورت نشده
     یا مشکلی داشته باشه، مقدار خالی/امن برمی‌گردونه (این نباید کل پنل رو خراب کنه)."""
     try:
         import telegram_bot
@@ -948,7 +947,6 @@ ALL_PERMISSIONS = {
     "clients": "ساخت کلاینت (بخش جدا)",
     "subscriptions": "مدیریت سابسکریپشن",
     "categories": "مدیریت دسته‌بندی",
-    "plans": "مدیریت پلن فروش",
     "reports": "گزارش‌ها",
     "messages": "مرکز پیام و خطا",
     "bot": "مدیریت ربات",
@@ -958,13 +956,11 @@ ALL_PERMISSIONS = {
 
 BOT_TEXTS = {
     "welcome": "🛡 <b>VodiWalker Control Center</b>\n\nاز منوی زیر عملیات موردنظر را انتخاب کنید.",
-    "admin_menu": "🛠 <b>مدیریت پنل</b>\n\nساخت اینباند، کلاینت، گروه ساب و مدیریت فروش از همین‌جا در دسترس است.",
+    "admin_menu": "🛠 <b>مدیریت پنل</b>\n\nساخت اینباند، کلاینت و گروه ساب از همین‌جا در دسترس است.",
     "config_created": "✅ کانفیگ با موفقیت ساخته شد.",
     "config_deleted": "🗑 کانفیگ حذف شد.",
     "config_disabled": "⛔ کانفیگ غیرفعال شد.",
     "config_enabled": "✅ کانفیگ فعال شد.",
-    "store_intro": "🛒 <b>فروشگاه</b>\n\nپلن موردنظر را انتخاب کنید.",
-    "payment_success": "🎉 پرداخت با موفقیت انجام شد.\n\nاشتراک شما آماده است.",
 }
 
 def get_bot_text(key: str, fallback: str = "") -> str:
@@ -1219,8 +1215,6 @@ async def require_auth(
             permission = "subscriptions"
         elif path.startswith("/api/categories"):
             permission = "categories"
-        elif path.startswith("/api/plans"):
-            permission = "plans"
         elif path.startswith("/api/reports"):
             permission = "reports"
         elif path.startswith("/api/errors") or path.startswith("/api/activity"):
@@ -1661,7 +1655,7 @@ async def load_state():
             data.get("daily_stats", {})
         )
 
-        # بازیابی تنظیمات پنل (آدرس عمومی + مشخصات ربات فروش)
+        # بازیابی تنظیمات پنل (آدرس عمومی + مشخصات ربات تلگرام)
         BOT_TEXTS.update(data.get("bot_texts") or {})
         settings_data = data.get("settings") or {}
         if settings_data.get("public_base_url"):
@@ -1786,7 +1780,7 @@ async def save_state():
                 "daily_stats":
                     dict(DAILY_STATS),
 
-                # تنظیمات پنل: آدرس عمومی + مشخصات ربات فروش (برای اینکه با ری‌استارت
+                # تنظیمات پنل: آدرس عمومی + مشخصات ربات تلگرام (برای اینکه با ری‌استارت
                 # سرویس از دست نرن و نیازی به .env دستی نباشه).
                 "bot_texts": BOT_TEXTS,
                 "settings": {
@@ -2624,53 +2618,6 @@ async def root(request: Request):
     return RedirectResponse("/login")
 
 
-
-# ============================================================
-# VODIWALKER STORE / SUBSCRIPTION PLANS
-# ============================================================
-# Plan data now lives in sales.py (persisted to vodiwalker_plans.json)
-# and is fully editable from the "مدیریت پلن‌ها" tab in the dashboard.
-# This page is rendered fresh on every request so edits show up instantly.
-
-def _store_plan_cards(plans):
-    cards = []
-    for plan in plans:
-        cards.append(f"""
-        <article class="plan-card {'featured' if plan.get('featured') else ''}">
-          <div class="plan-badge">{escape_html(plan.get('badge') or '')}</div>
-          <div class="plan-name">{escape_html(plan.get('name',''))}</div>
-          <div class="plan-price"><strong>{plan.get('stars',0)}</strong><span> Stars</span></div>
-          <ul>
-            <li>اعتبار {plan.get('days',0)} روزه</li>
-            <li>{plan.get('volume_gb',0)}GB ترافیک</li>
-            <li>تا {plan.get('speed_mbps',0)}Mbps</li>
-            <li>{plan.get('ip_limit',0)} کاربر هم‌زمان</li>
-            <li>لینک سابسکریپشن اختصاصی</li>
-          </ul>
-          <a class="buy-btn" href="https://t.me/{escape_html(os.environ.get('TELEGRAM_BOT_USERNAME','VodiWalkerBot'))}?start=buy_{escape_html(plan.get('id',''))}">خرید از ربات فروش</a>
-        </article>
-        """)
-    return "\n".join(cards)
-
-def _store_html(plans):
-    return """<!doctype html>
-<html lang="fa" dir="rtl">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VodiWalker — فروش اشتراک</title>
-<style>
-*{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:Vazirmatn,Tahoma,Arial,sans-serif;color:#eef2ff;background:#070a12;
-background-image:radial-gradient(circle at 15% 15%,rgba(99,102,241,.18),transparent 30%),radial-gradient(circle at 85% 20%,rgba(14,165,233,.15),transparent 30%),linear-gradient(145deg,#070a12,#0b1020 55%,#060810)}
-.wrap{width:min(1120px,92%);margin:auto;padding:54px 0 70px}.hero{text-align:center;margin-bottom:38px}.logo{display:inline-flex;width:64px;height:64px;border-radius:20px;align-items:center;justify-content:center;font-size:26px;font-weight:900;background:linear-gradient(135deg,#7c3aed,#06b6d4);box-shadow:0 20px 60px rgba(76,29,149,.35)}
-h1{font-size:clamp(34px,6vw,64px);margin:18px 0 8px;letter-spacing:-2px}.sub{color:#9ca8c7;max-width:700px;margin:auto;line-height:1.9}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:34px}.plan-card{position:relative;padding:28px;border:1px solid rgba(255,255,255,.09);border-radius:28px;background:rgba(15,23,42,.86);backdrop-filter:blur(10px);box-shadow:0 25px 80px rgba(0,0,0,.25);transition:.25s;contain:layout style paint}.plan-card:hover{transform:translateY(-5px);border-color:rgba(129,140,248,.4)}.featured{border-color:rgba(99,102,241,.55);box-shadow:0 25px 90px rgba(79,70,229,.16)}.plan-badge{display:inline-block;font-size:12px;padding:7px 10px;border-radius:999px;background:rgba(99,102,241,.13);color:#b7c2ff}.plan-name{font-size:24px;font-weight:900;margin:18px 0 8px}.plan-price strong{font-size:42px}.plan-price span{color:#94a3b8}ul{padding:0;list-style:none;line-height:2.2;color:#cbd5e1;min-height:150px}.buy-btn{display:block;text-align:center;text-decoration:none;color:white;font-weight:800;padding:13px 16px;border-radius:15px;background:linear-gradient(135deg,#6366f1,#06b6d4)}.note{margin-top:26px;padding:16px;border-radius:18px;background:rgba(255,255,255,.035);color:#8fa0bf;text-align:center;font-size:13px}@media(max-width:800px){.grid{grid-template-columns:1fr}.wrap{padding-top:32px}}@media(max-width:800px),(pointer:coarse){.plan-card{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background:rgba(15,23,42,.96)}}
-</style></head><body><main class="wrap"><section class="hero"><div class="logo">V</div><h1>VodiWalker Store</h1><p class="sub">خرید سریع، تحویل خودکار و سابسکریپشن اختصاصی. پرداخت از طریق ربات فروش انجام می‌شود و بعد از پرداخت، لینک شما به‌صورت خودکار ساخته خواهد شد.</p></section><section class="grid">""" + _store_plan_cards(plans) + """</section><div class="note">پرداخت و تحویل توسط ربات رسمی VodiWalker انجام می‌شود. برای فعال‌سازی ربات، TELEGRAM_BOT_TOKEN و درگاه/Stars را تنظیم کنید.</div></main></body></html>"""
-
-@app.get("/plans", response_class=HTMLResponse)
-async def public_plans():
-    if not SALES_ENABLED:
-        return HTMLResponse("""<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VodiWalker · Future Release</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#070b13;color:#f5f7fb;font-family:Tahoma,Arial,sans-serif}.box{width:min(560px,calc(100% - 36px));padding:42px 28px;text-align:center;border:1px solid rgba(255,255,255,.1);border-radius:28px;background:linear-gradient(145deg,#0d1320,#111a2a);box-shadow:0 30px 90px rgba(0,0,0,.35)}.ico{width:72px;height:72px;margin:0 auto 18px;display:grid;place-items:center;border-radius:22px;background:rgba(124,92,255,.15);font-size:30px}.muted{color:#9aa7bc;line-height:2;font-size:13px}.tag{display:inline-block;margin-top:18px;padding:8px 13px;border-radius:999px;background:rgba(53,214,255,.08);border:1px solid rgba(53,214,255,.2);color:#64dcff;font-size:11px}</style></head><body><main class="box"><div class="ico">🔒</div><h1>فروش اشتراک موقتاً غیرفعال است</h1><p class="muted">ماژول فروش و پلن‌ها در نسخه فعلی VodiWalker فعال نیست. این قابلیت پس از تکمیل و تست نهایی در نسخه‌های بعدی منتشر خواهد شد.</p><span class="tag">VodiWalker · Future Release</span></main></body></html>""")
-    import sales
-    return HTMLResponse(_store_html(sales.list_plans()))
 
 # ============================================================
 # HEALTH
@@ -7848,7 +7795,7 @@ async def api_bot_texts_save(request: Request, token=Depends(require_owner)):
     log_activity("bot", "متن‌های ربات از پنل بروزرسانی شد", "ok")
     return {"ok": True, "texts": BOT_TEXTS}
 
-# PANEL SETTINGS (آدرس عمومی پنل + مدیریت ربات فروش از داخل پنل)
+# PANEL SETTINGS (آدرس عمومی پنل + مدیریت ربات تلگرام از داخل پنل)
 # ============================================================
 
 @app.get("/api/settings")
@@ -7953,7 +7900,7 @@ async def api_bot_start(token=Depends(require_owner)):
         await telegram_bot.start_bot()
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"خطا در روشن کردن ربات: {exc}")
-    log_activity("system", "ربات فروش از داخل پنل روشن شد", "ok")
+    log_activity("system", "ربات تلگرام از داخل پنل روشن شد", "ok")
     return {"ok": True, **_bot_settings_snapshot()}
 
 
@@ -7964,111 +7911,8 @@ async def api_bot_stop(token=Depends(require_owner)):
         await telegram_bot.stop_bot()
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"خطا در خاموش کردن ربات: {exc}")
-    log_activity("system", "ربات فروش از داخل پنل خاموش شد", "warn")
+    log_activity("system", "ربات تلگرام از داخل پنل خاموش شد", "warn")
     return {"ok": True, **_bot_settings_snapshot()}
-
-
-# ============================================================
-# PLAN MANAGEMENT (graphical, editable store plans)
-# ============================================================
-
-@app.get("/api/plans")
-async def api_list_plans(token=Depends(require_auth)):
-    import sales
-    return {"ok": True, "plans": sales.list_plans()}
-
-
-@app.post("/api/plans")
-async def api_create_plan(request: Request, token=Depends(require_auth)):
-    import sales
-
-    try:
-        body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="اطلاعات نامعتبر است")
-
-    name = str(body.get("name", "")).strip() or "پلن جدید"
-
-    raw_id = str(body.get("id") or name).strip().lower()
-    plan_id = "".join(ch if (ch.isalnum() or ch == "-") else "-" for ch in raw_id.replace(" ", "-")).strip("-")
-    plan_id = plan_id or f"plan-{secrets.token_hex(3)}"
-
-    if sales.get_plan(plan_id):
-        plan_id = f"{plan_id}-{secrets.token_hex(2)}"
-
-    data = {
-        "name": name,
-        "days": safe_int(body.get("days"), default=30, minimum=0),
-        "volume_gb": safe_float(body.get("volume_gb"), default=10, minimum=0),
-        "speed_mbps": safe_float(body.get("speed_mbps"), default=0, minimum=0),
-        "ip_limit": safe_int(body.get("ip_limit"), default=1, minimum=0),
-        "stars": safe_int(body.get("stars"), default=99, minimum=0),
-        "badge": str(body.get("badge", "")).strip(),
-        "featured": bool(body.get("featured", False)),
-        "order": safe_int(body.get("order"), default=len(sales.PLANS) + 1, minimum=0),
-    }
-
-    await sales.upsert_plan(plan_id, data)
-
-    log_activity("plan", f"پلن «{name}» ایجاد شد", "ok")
-
-    return {"ok": True, "plan": sales.get_plan(plan_id)}
-
-
-@app.patch("/api/plans/{plan_id}")
-async def api_update_plan(plan_id: str, request: Request, token=Depends(require_auth)):
-    import sales
-
-    existing = sales.get_plan(plan_id)
-    if not existing:
-        raise HTTPException(status_code=404, detail="پلن یافت نشد")
-
-    try:
-        body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="اطلاعات نامعتبر است")
-
-    updated = dict(existing)
-
-    if "name" in body:
-        updated["name"] = str(body["name"]).strip() or updated.get("name")
-    if "badge" in body:
-        updated["badge"] = str(body["badge"]).strip()
-    if "days" in body:
-        updated["days"] = safe_int(body["days"], default=existing.get("days", 0), minimum=0)
-    if "ip_limit" in body:
-        updated["ip_limit"] = safe_int(body["ip_limit"], default=existing.get("ip_limit", 0), minimum=0)
-    if "stars" in body:
-        updated["stars"] = safe_int(body["stars"], default=existing.get("stars", 0), minimum=0)
-    if "order" in body:
-        updated["order"] = safe_int(body["order"], default=existing.get("order", 0), minimum=0)
-    if "volume_gb" in body:
-        updated["volume_gb"] = safe_float(body["volume_gb"], default=existing.get("volume_gb", 0), minimum=0)
-    if "speed_mbps" in body:
-        updated["speed_mbps"] = safe_float(body["speed_mbps"], default=existing.get("speed_mbps", 0), minimum=0)
-    if "featured" in body:
-        updated["featured"] = bool(body["featured"])
-
-    await sales.upsert_plan(plan_id, updated)
-
-    log_activity("plan", f"پلن «{updated.get('name')}» ویرایش شد", "ok")
-
-    return {"ok": True, "plan": sales.get_plan(plan_id)}
-
-
-@app.delete("/api/plans/{plan_id}")
-async def api_delete_plan(plan_id: str, token=Depends(require_auth)):
-    import sales
-
-    existing = sales.get_plan(plan_id)
-    if not existing:
-        raise HTTPException(status_code=404, detail="پلن یافت نشد")
-
-    await sales.delete_plan(plan_id)
-
-    log_activity("plan", f"پلن «{existing.get('name')}» حذف شد", "warn")
-
-    return {"ok": True}
 
 
 # ============================================================
@@ -8092,8 +7936,6 @@ async def api_reports_summary(request: Request, token=Depends(require_auth)):
             "date": key,
             "traffic_mb": round(bucket.get("traffic_bytes", 0) / (1024 ** 2), 2),
             "new_links": bucket.get("new_links", 0),
-            "orders": bucket.get("orders", 0),
-            "stars": bucket.get("stars", 0),
         })
 
     now_ts = time.time()
@@ -8132,9 +7974,6 @@ async def api_reports_summary(request: Request, token=Depends(require_auth)):
 
     top_links.sort(key=lambda x: x["used_bytes"], reverse=True)
 
-    import sales
-    sales_totals = sales.sales_stats()
-
     return {
         "ok": True,
         "series": series,
@@ -8145,9 +7984,6 @@ async def api_reports_summary(request: Request, token=Depends(require_auth)):
             "unlimited_links": unlimited_links,
             "subs": len(SUBS),
             "admins": len(ADMINS) + 1,
-            "orders": sales_totals.get("orders", 0),
-            "stars": sales_totals.get("stars", 0),
-            "customers": sales_totals.get("customers", 0),
         },
         "protocol_distribution": [
             {"protocol": proto, "count": count} for proto, count in protocol_counts.items()
