@@ -46,6 +46,10 @@ from fastapi.middleware.cors import CORSMiddleware
 APP_NAME = "VodiWalker"
 APP_VERSION = "27.3.0"
 
+# فقط ویرایش «متن‌های ربات» قفل است؛ تنظیمات و روشن/خاموش ربات آزاد است
+BOT_TEXTS_LOCKED = True
+BOT_TEXTS_LOCKED_MSG = "ویرایش متن‌های ربات قفل شده است و امکان تغییر ندارد"
+
 SUPPORT_USERNAME = "@VodiWalker"
 SUPPORT_URL = "https://t.me/VodiWalker"
 
@@ -1552,6 +1556,44 @@ def build_config_remark(link: dict, uid: str) -> str:
     return " | ".join(p for p in parts if p) or name
 
 
+def _remaining_time_text(expires_at) -> str:
+    """متن «زمان باقی‌مانده» به‌شکل خلاصه (روز/ساعت/دقیقه) — برای ردیف تزئینی اطلاعات."""
+    if not expires_at:
+        return "∞"
+    try:
+        exp_dt = datetime.fromisoformat(str(expires_at))
+        now_dt = datetime.now(exp_dt.tzinfo) if getattr(exp_dt, "tzinfo", None) else datetime.now()
+        secs = int((exp_dt - now_dt).total_seconds())
+        if secs <= 0:
+            return "منقضی"
+        days, rem = divmod(secs, 86400)
+        hours, rem = divmod(rem, 3600)
+        mins = rem // 60
+        return f"{days}د {hours}س" if days else (f"{hours}س {mins}د" if hours else f"{mins}د")
+    except Exception:
+        return str(expires_at)[:16]
+
+
+def build_info_server_remark(used_bytes: int, limit_bytes: int, expires_at) -> str:
+    """متن نمایشیِ «سرور اطلاعاتی» که (در صورت فعال بودن از تنظیمات) به‌عنوان یک ردیف
+    تزئینیِ همیشگی — با آدرس 0.0.0.0 که هرگز پینگ نمی‌خورد/وصل نمی‌شود — به ابتدای
+    هر ساب یا گروه‌ساب اضافه می‌شود؛ فقط برای نمایش حجم/زمان باقی‌مانده به کاربر."""
+    show_volume = bool(CONFIG.get("sub_info_line_show_volume", True))
+    show_expiry = bool(CONFIG.get("sub_info_line_show_expiry", True))
+    parts = ["🌐 Vodiwalkerpanel"]
+    if show_volume:
+        used = int(used_bytes or 0)
+        limit = int(limit_bytes or 0)
+        remaining = max(0, limit - used) if limit > 0 else 0
+        parts.append(
+            f"{fmt_bytes(used)}/{fmt_bytes(limit)} (باقی {fmt_bytes(remaining)})"
+            if limit > 0 else f"{fmt_bytes(used)}/∞"
+        )
+    if show_expiry:
+        parts.append(_remaining_time_text(expires_at))
+    return " | ".join(parts)
+
+
 def build_manual_uri(
     link: dict,
     uid: str,
@@ -2925,17 +2967,12 @@ def login_error_html(
         message
     )
 
-    return LOGIN_HTML.replace(
-        "</form>",
-        (
-            f"""
-            <div class="error">
-                {safe_message}
-            </div>
-            </form>
-            """
-        ),
-    )
+    error_block = f'<div class="error" role="alert">{safe_message}</div>'
+
+    if "<!--LOGIN_ERROR-->" in LOGIN_HTML:
+        return LOGIN_HTML.replace("<!--LOGIN_ERROR-->", error_block, 1)
+
+    return LOGIN_HTML.replace("</form>", error_block + "</form>", 1)
 
 
 @app.get(
@@ -5280,29 +5317,11 @@ async def subscription_single(
     clean_ips = link.get("clean_ips") or []
     used = int(link.get("used_bytes", 0) or 0)
     limit = int(link.get("limit_bytes", 0) or 0)
-    remaining = max(0, limit - used) if limit > 0 else 0
-    volume_text = f"{fmt_bytes(used)}/{fmt_bytes(limit)} (باقی {fmt_bytes(remaining)})" if limit > 0 else f"{fmt_bytes(used)}/∞"
     expires_at = link.get("expires_at")
-    if expires_at:
-        try:
-            exp_dt = datetime.fromisoformat(str(expires_at))
-            now_dt = datetime.now(exp_dt.tzinfo) if getattr(exp_dt, "tzinfo", None) else datetime.now()
-            secs = int((exp_dt - now_dt).total_seconds())
-            if secs <= 0:
-                time_text = "منقضی"
-            else:
-                days, rem = divmod(secs, 86400)
-                hours, rem = divmod(rem, 3600)
-                mins = rem // 60
-                time_text = f"{days}د {hours}س" if days else (f"{hours}س {mins}د" if hours else f"{mins}د")
-        except Exception:
-            time_text = str(expires_at)[:16]
-    else:
-        time_text = "∞"
-    label = str(link.get("label") or "Config")
-    stats_remark = f"{label} | {volume_text} | {time_text}"
-    stats_line = vless_link_for_link({**link, "label": stats_remark}, uuid, "0.0.0.0")
-    lines = [stats_line]
+    stats_remark = build_info_server_remark(used, limit, expires_at)
+    lines = []
+    if bool(CONFIG.get("sub_info_line_enabled", True)):
+        lines.append(vless_link_for_link({**link, "label": stats_remark}, uuid, "0.0.0.0"))
     used_names = set()
     cfg_count = max(1, min(40, int(link.get("config_count") or 1)))
     if clean_ips:
@@ -6495,6 +6514,11 @@ async def sub_group_subscription(
 
     host = get_host(request)
 
+    template_link = None
+    total_used = 0
+    total_limit = 0
+    expiries = []
+
     async with LINKS_LOCK:
 
         lines = []
@@ -6515,6 +6539,13 @@ async def sub_group_subscription(
                 )
             ):
 
+                if template_link is None:
+                    template_link = link
+                total_used += int(link.get("used_bytes", 0) or 0)
+                total_limit += int(link.get("limit_bytes", 0) or 0)
+                if link.get("expires_at"):
+                    expiries.append(str(link.get("expires_at")))
+
                 lines.append(
                     vless_link_for_link(
                         link,
@@ -6528,41 +6559,14 @@ async def sub_group_subscription(
     # یک اینباند روی پنل دیگر، هر دو داخل یک اشتراک).
     remote_entries = await refresh_remote_links_if_stale(sub, sub_id=next((k for k, v in SUBS.items() if v is sub), None))
     for entry in remote_entries:
-        if not entry.get("node_missing") and entry.get("active", True) and entry.get("vless"):
-            lines.append(entry["vless"])
-
-    content = (
-        base64
-        .b64encode(
-            "\n".join(
-                lines
-            ).encode()
-        )
-        .decode()
-    )
-
-    total_used = 0
-    total_limit = 0
-    expiries = []
-    valid_ids = list(sub.get("link_ids", []))
-
-    async with LINKS_LOCK:
-        for link_id in valid_ids:
-            link = LINKS.get(link_id)
-            if not link or not is_link_allowed(link):
-                continue
-            total_used += int(link.get("used_bytes", 0) or 0)
-            total_limit += int(link.get("limit_bytes", 0) or 0)
-            if link.get("expires_at"):
-                expiries.append(str(link.get("expires_at")))
-
-    for entry in remote_entries:
         if not entry.get("active", True):
             continue
         total_used += int(entry.get("used_bytes", 0) or 0)
         total_limit += int(entry.get("limit_bytes", 0) or 0)
         if entry.get("expires_at"):
             expiries.append(str(entry.get("expires_at")))
+        if not entry.get("node_missing") and entry.get("vless"):
+            lines.append(entry["vless"])
 
     # For a group subscription, expose aggregate usage/expiry in standard headers.
     group_limit = total_limit if total_limit > 0 else 0
@@ -6576,16 +6580,24 @@ async def sub_group_subscription(
         except Exception:
             group_expiry = expiries[0]
 
-    group_volume_text = (
-        f"{fmt_bytes(total_used)}/{fmt_bytes(group_limit)}"
-        if group_limit > 0
-        else f"{fmt_bytes(total_used)}/∞"
+    # ردیف تزئینیِ «سرور اطلاعاتی» (آدرس 0.0.0.0، هرگز پینگ نمی‌خورد) — اگر حداقل یک
+    # کانفیگ واقعی در این گروه باشد، به‌عنوان اولین ردیفِ لیست سرورها اضافه می‌شود تا
+    # کاربر همان لحظه که اپش را باز می‌کند، حجم/زمان باقی‌مانده‌اش را ببیند.
+    group_info_remark = build_info_server_remark(total_used, group_limit, group_expiry)
+    if template_link is not None and bool(CONFIG.get("sub_info_line_enabled", True)):
+        lines.insert(0, vless_link_for_link({**template_link, "label": group_info_remark}, uuid_key, "0.0.0.0"))
+
+    content = (
+        base64
+        .b64encode(
+            "\n".join(
+                lines
+            ).encode()
+        )
+        .decode()
     )
-    group_expiry_text = group_expiry or "∞"
-    group_title = (
-        f"0.0.0.0 | {group_volume_text} | {group_expiry_text} | "
-        f"{sub['name']} | کانال تلگرام: VodiWalker"
-    )
+
+    group_title = f"0.0.0.0 | {group_info_remark} | {sub['name']} | کانال تلگرام: VodiWalker"
     headers = subscription_metadata_headers(
         total_used,
         group_limit,
@@ -7914,9 +7926,12 @@ def _admin_request_public(req_id: str, req: dict) -> dict:
 async def api_submit_admin_request(request: Request):
     """صفحه لاگین این را صدا می‌زند؛ نیازی به احراز هویت ندارد."""
 
-    ip = request.client.host if request.client else "unknown"
+    ip = client_ip(request)
 
     now = time.time()
+    if len(ADMIN_REQUEST_RATE) > 2000:
+        for _ip in [k for k, v in ADMIN_REQUEST_RATE.items() if now - v > ADMIN_REQUEST_COOLDOWN_SECONDS]:
+            ADMIN_REQUEST_RATE.pop(_ip, None)
     last = ADMIN_REQUEST_RATE.get(ip, 0)
     if now - last < ADMIN_REQUEST_COOLDOWN_SECONDS:
         raise HTTPException(
@@ -7935,8 +7950,11 @@ async def api_submit_admin_request(request: Request):
 
     if not full_name or len(full_name) < 3:
         raise HTTPException(status_code=400, detail="نام و نام خانوادگی را کامل وارد کنید")
-    if not telegram_id or len(telegram_id) < 3:
+    if not re.fullmatch(r"[A-Za-z0-9_]{3,64}", telegram_id):
         raise HTTPException(status_code=400, detail="آیدی تلگرام معتبر وارد کنید")
+
+    if sum(1 for r in ADMIN_REQUESTS.values() if r.get("status") == "pending") >= 200:
+        raise HTTPException(status_code=429, detail="ظرفیت درخواست‌ها پر است؛ بعداً تلاش کنید")
 
     ADMIN_REQUEST_RATE[ip] = now
 
@@ -8097,6 +8115,8 @@ async def api_bot_texts(token=Depends(require_owner)):
 
 @app.post("/api/bot/texts")
 async def api_bot_texts_save(request: Request, token=Depends(require_owner)):
+    if BOT_TEXTS_LOCKED:
+        raise HTTPException(status_code=403, detail=BOT_TEXTS_LOCKED_MSG)
     try:
         body = await request.json()
     except Exception:
@@ -8129,12 +8149,16 @@ async def api_get_settings(request: Request, token=Depends(require_owner)):
         "bot_token": bot_cfg.get("bot_token", ""),
         "bot_admin_ids": bot_cfg.get("admin_ids", ""),
         "bot_running": bot_cfg.get("running", False),
+        "bot_texts_locked": BOT_TEXTS_LOCKED,
         "bot_auto_start": bool(CONFIG.get("bot_auto_start", False)),
         "admin_username": AUTH.get("username", DEFAULT_ADMIN_USERNAME),
         "sub_remark_show_name": bool(CONFIG.get("sub_remark_show_name", True)),
         "sub_remark_show_volume": bool(CONFIG.get("sub_remark_show_volume", False)),
         "sub_remark_show_id": bool(CONFIG.get("sub_remark_show_id", False)),
         "sub_remark_show_inbound": bool(CONFIG.get("sub_remark_show_inbound", False)),
+        "sub_info_line_enabled": bool(CONFIG.get("sub_info_line_enabled", True)),
+        "sub_info_line_show_volume": bool(CONFIG.get("sub_info_line_show_volume", True)),
+        "sub_info_line_show_expiry": bool(CONFIG.get("sub_info_line_show_expiry", True)),
     }
 
 
@@ -8171,7 +8195,10 @@ async def api_update_settings(request: Request, token=Depends(require_owner)):
             raise HTTPException(status_code=400, detail="پورت عمومی TCP باید عدد باشد")
         CONFIG["tcp_public_port"] = raw_port
 
-    for flag in ("sub_remark_show_name", "sub_remark_show_volume", "sub_remark_show_id", "sub_remark_show_inbound"):
+    for flag in (
+        "sub_remark_show_name", "sub_remark_show_volume", "sub_remark_show_id", "sub_remark_show_inbound",
+        "sub_info_line_enabled", "sub_info_line_show_volume", "sub_info_line_show_expiry",
+    ):
         if flag in body:
             CONFIG[flag] = bool(body.get(flag))
 
