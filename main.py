@@ -1006,7 +1006,11 @@ def link_in_scope(scope, uid: str) -> bool:
 
 
 def client_visible(link, actor_id: str) -> bool:
-    """کلاینت فقط برای سازنده‌اش دیده می‌شود (کلاینت‌های قدیمی بدون created_by = مالک)."""
+    """کلاینت فقط برای سازنده‌اش دیده می‌شود (کلاینت‌های قدیمی بدون created_by = مالک).
+    باگ رفع‌شده: مالک همیشه همه‌چیز را می‌بیند — این محدودیت فقط بین ادمین‌ها اعمال می‌شود،
+    نه روی مالک (وگرنه مالک اصلاً کلاینت‌های ساخته‌شده توسط ادمین‌ها را نمی‌دید)."""
+    if actor_id == "owner":
+        return True
     if not link.get("parent_inbound_id"):
         return True
     return (link.get("created_by") or "owner") == actor_id
