@@ -845,6 +845,28 @@ body{background:radial-gradient(900px 500px at 75% -10%,rgba(124,92,255,.10),tra
 .card,.resource-card{contain:layout paint}
 @media(max-width:820px){.resource-grid{grid-template-columns:repeat(2,1fr)}.resource-card .rc-head b{font-size:20px}.body-wrap{padding:14px 12px 70px}.card,.resource-card{box-shadow:none}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.ov-shell{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start}
+.ov-main{min-width:0}.ov-rail{display:flex;flex-direction:column;gap:14px}
+.rail-card .panel-head b{font-size:13px}.rail-dot{width:8px;height:8px;border-radius:50%;background:var(--good)}
+.rail-item{display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid var(--line);font-size:11px}
+.rail-item div{flex:1;min-width:0}.rail-item b{display:block;font-size:11.5px}.rail-item small{color:var(--sub2);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.rail-item em{font-style:normal;color:var(--sub2);font-size:10px}
+.ri-ic{width:30px;height:30px;border-radius:9px;flex-shrink:0;background:rgba(34,197,94,.16);border:1px solid rgba(34,197,94,.4)}
+.ri-ic.warn{background:rgba(245,158,11,.16);border-color:rgba(245,158,11,.4)}.ri-ic.bad{background:rgba(242,73,85,.16);border-color:rgba(242,73,85,.4)}
+.rail-more{display:block;text-align:center;padding:10px;font-size:11px;color:var(--accent);cursor:pointer}
+.qa-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:14px}
+.qa{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 6px;border-radius:12px;border:1px solid var(--line2);background:rgba(168,85,247,.08);color:var(--text);font-size:10.5px;cursor:pointer}
+.qa i{font-size:20px;color:#c4b5fd}.qa:hover{background:rgba(168,85,247,.2)}
+.rail-health{display:flex;align-items:center;gap:16px;padding:16px}
+.rail-health .health-gauge{width:96px;height:96px}
+.rail-legend{flex:1;display:flex;flex-direction:column;gap:7px;font-size:11px}
+.rail-legend div{display:flex;align-items:center;gap:7px}.rail-legend i{width:8px;height:8px;border-radius:50%}.rail-legend b{margin-inline-start:auto}
+.chart-tabs{display:flex;gap:6px;padding:12px 16px 0;flex-wrap:wrap}
+.chart-tabs button{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--sub);font-size:11.5px;cursor:pointer}
+.chart-tabs button.on{background:linear-gradient(135deg,#a855f7,#6d28d9);color:#fff;border-color:transparent;box-shadow:0 6px 18px -6px rgba(168,85,247,.8)}
+@media(max-width:1180px){.ov-shell{grid-template-columns:1fr}.ov-rail{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}}
+@media(max-width:820px){.traffic-layout,.bottom-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -908,6 +930,7 @@ body{background:radial-gradient(900px 500px at 75% -10%,rgba(124,92,255,.10),tra
     <div class="page on" id="pg-overview">
       <div class="pg-head"><div><div class="eyebrow"><span class="live-dot"></span> LIVE SYSTEM MONITOR</div><h1>مرکز کنترل VodiWalker</h1><p>نمای لحظه‌ای منابع سرور، ترافیک و اتصال‌ها.</p></div>
         <div class="toolbar"><button class="btn" onclick="refreshOverview()"><i class="ti ti-refresh"></i>بروزرسانی</button><button class="btn primary" onclick="gotoPage('links')"><i class="ti ti-network"></i>اینباندها</button></div></div>
+      <div class="ov-shell"><div class="ov-main">
       <div class="ib-quickstats ov-quickstats" id="ovBizStats"></div>
       <div class="resource-grid" id="resourceGrid">
         <div class="resource-card"><div class="rc-head"><span><i class="ti ti-cpu"></i> CPU</span><b id="cpuVal">—</b></div><div class="rc-sub" id="cpuSub">در حال دریافت...</div><svg class="spark" id="cpuSpark" viewBox="0 0 240 46" preserveAspectRatio="none"></svg></div>
@@ -916,7 +939,7 @@ body{background:radial-gradient(900px 500px at 75% -10%,rgba(124,92,255,.10),tra
         <div class="resource-card"><div class="rc-head"><span><i class="ti ti-database"></i> STORAGE</span><b id="storageVal">—</b></div><div class="rc-sub" id="storageSub">—</div><svg class="spark" id="storageSpark" viewBox="0 0 240 46" preserveAspectRatio="none"></svg></div>
       </div>
       <div class="traffic-layout">
-        <div class="card traffic-card"><div class="panel-head"><div><b>OVERALL SPEED</b><small id="speedMeta">Network throughput</small></div><div class="traffic-legend"><span>↑ <b id="txRate">0 B/s</b></span><span>↓ <b id="rxRate">0 B/s</b></span></div></div><div class="big-chart"><svg id="trafficChart" viewBox="0 0 900 260" preserveAspectRatio="none"></svg></div><div class="traffic-foot"><div><small>SENT</small><b id="sentTotal">0 B</b></div><div><small>RECEIVED</small><b id="recvTotal">0 B</b></div><div><small>LIVE THROUGHPUT</small><b id="liveRate">↑ 0 B/s ↓ 0 B/s</b></div></div></div>
+        <div class="card traffic-card"><div class="panel-head"><div><b>OVERALL SPEED</b><small id="speedMeta">Network throughput</small></div><div class="traffic-legend"><span>↑ <b id="txRate">0 B/s</b></span><span>↓ <b id="rxRate">0 B/s</b></span></div></div><div class="chart-tabs" id="chartTabs"><button class="on" data-k="net" onclick="setChartTab('net')"><i class="ti ti-activity"></i> Network</button><button data-k="cpu" onclick="setChartTab('cpu')"><i class="ti ti-cpu"></i> CPU</button><button data-k="mem" onclick="setChartTab('mem')"><i class="ti ti-device-ram"></i> Memory</button><button data-k="disk" onclick="setChartTab('disk')"><i class="ti ti-database"></i> Disk</button></div><div class="big-chart"><svg id="trafficChart" viewBox="0 0 900 260" preserveAspectRatio="none"></svg></div><div class="traffic-foot"><div><small>SENT</small><b id="sentTotal">0 B</b></div><div><small>RECEIVED</small><b id="recvTotal">0 B</b></div><div><small>LIVE THROUGHPUT</small><b id="liveRate">↑ 0 B/s ↓ 0 B/s</b></div></div></div>
         <div class="card connection-card"><div class="panel-head"><div><b>CONNECTION STATS</b><small>Open sockets</small></div><i class="ti ti-plug-connected"></i></div><div class="connection-number" id="connVal">0</div><div class="connection-label">OPEN CONNECTIONS</div><svg class="conn-chart" id="connChart" viewBox="0 0 340 150" preserveAspectRatio="none"></svg><div class="conn-foot"><span>REQUESTS <b id="reqVal">0</b></span><span>ERRORS <b id="errVal">0</b></span></div></div>
       </div>
       <div class="bottom-grid">
@@ -925,6 +948,17 @@ body{background:radial-gradient(900px 500px at 75% -10%,rgba(124,92,255,.10),tra
         <div class="card mini-panel"><div class="panel-head"><div><b>NETWORK</b><small>Host load</small></div><i class="ti ti-world"></i></div><div class="health-row"><span>Load</span><b id="loadVal">—</b></div><div class="health-row"><span>Traffic</span><b id="trafficTotalVal">0 B</b></div></div>
       </div>
       <div class="card mini-panel" style="margin-top:14px"><div class="panel-head"><div><b>TOP CONFIGS BY USAGE</b><small>پرمصرف‌ترین کانفیگ‌های ۷ روز اخیر</small></div><i class="ti ti-trending-up"></i></div><div id="ovTopLinks" class="ov-toplinks"></div></div>
+      </div>
+      <aside class="ov-rail">
+        <div class="card rail-card"><div class="panel-head"><div><b><i class="ti ti-activity-heartbeat"></i> Real-time Activity</b></div><span class="rail-dot"></span></div><div id="railActivity" class="rail-list"><div class="ov-empty">…</div></div><a class="rail-more" onclick="gotoPage('activity')">View All ›</a></div>
+        <div class="card rail-card"><div class="panel-head"><div><b>Quick Actions</b></div></div><div class="qa-grid">
+          <button class="qa" onclick="openLinkDrawer()"><i class="ti ti-plus"></i><span>Create Config</span></button>
+          <button class="qa" onclick="openNodeDrawer()"><i class="ti ti-server-cog"></i><span>Add Node</span></button>
+          <button class="qa" onclick="gotoPage('nodes')"><i class="ti ti-world"></i><span>Nodes</span></button>
+          <button class="qa" onclick="gotoPage('settings')"><i class="ti ti-shield-lock"></i><span>Settings</span></button></div></div>
+        <div class="card rail-card"><div class="panel-head"><div><b>Server Health</b></div></div><div class="rail-health"><div class="health-gauge" id="railGauge"><b id="railPct">—</b></div>
+          <div class="rail-legend"><div><i style="background:#a855f7"></i>CPU<b id="rlCpu">—</b></div><div><i style="background:#3b82f6"></i>Memory<b id="rlRam">—</b></div><div><i style="background:#f59e0b"></i>Disk<b id="rlDisk">—</b></div><div><i style="background:#22d3ee"></i>Swap<b id="rlSwap">—</b></div></div></div></div>
+      </aside></div>
     </div>
 
     <!-- LINKS -->
@@ -1966,6 +2000,7 @@ async function refreshOverview(){
       }).join('');
     }
   }catch(e){}
+  loadRailActivity();
   await refreshTelemetry();
 }
 let TEL={cpu:[],ram:[],swap:[],storage:[],traffic:[],conn:[]};
@@ -1987,16 +2022,34 @@ async function refreshTelemetry(){
     }else{
       pushSeries(TEL.cpu,t.cpu);pushSeries(TEL.ram,t.ram.percent);pushSeries(TEL.swap,t.swap.percent);pushSeries(TEL.storage,t.storage.percent);pushSeries(TEL.traffic,(t.network.tx_bps+t.network.rx_bps));pushSeries(TEL.conn,t.connections);
     }
-    drawSpark('cpuSpark',TEL.cpu);drawSpark('ramSpark',TEL.ram);drawSpark('swapSpark',TEL.swap);drawSpark('storageSpark',TEL.storage);drawChart('trafficChart',TEL.traffic);drawChart('connChart',TEL.conn);
+    drawSpark('cpuSpark',TEL.cpu);drawSpark('ramSpark',TEL.ram);drawSpark('swapSpark',TEL.swap);drawSpark('storageSpark',TEL.storage);drawChart('trafficChart',chartSeries(),chartMax());drawChart('connChart',TEL.conn);
     const _hc=Number(t.cpu)||0,_hr=Number(t.ram.percent)||0,_hs=Number(t.storage.percent)||0;
     const healthPct=Math.max(0,Math.min(100,Math.round(100-((_hc*0.4)+(_hr*0.35)+(_hs*0.25)))));
     const hg=$('healthGauge'),hp=$('healthPct'),hl=$('healthLabel');
     if(hg){hg.style.setProperty('--pct',healthPct);}
+    railUpdate(t,healthPct);
     if(hp){hp.textContent=healthPct+'%';}
     if(hl){const lang=(typeof curLang==='function'?curLang():'fa');const good=healthPct>=80,mid=healthPct>=50;
       hl.style.color=good?'var(--good)':(mid?'var(--warn)':'var(--bad)');
       hl.innerHTML=(good?(lang==='en'?'Healthy':'سالم'):(mid?(lang==='en'?'Moderate load':'بار متوسط'):(lang==='en'?'High load':'بار بالا')))+'<small>Overall system health</small>';
     }
+  }catch(e){}
+}
+let CHART_TAB='net';
+function chartSeries(){return CHART_TAB==='cpu'?TEL.cpu:CHART_TAB==='mem'?TEL.ram:CHART_TAB==='disk'?TEL.storage:TEL.traffic;}
+function chartMax(){return CHART_TAB==='net'?0:100;}
+function setChartTab(k){CHART_TAB=k;document.querySelectorAll('#chartTabs button').forEach(b=>b.classList.toggle('on',b.dataset.k===k));drawChart('trafficChart',chartSeries(),chartMax());}
+function railUpdate(t,h){
+  const g=$('railGauge');if(!g)return;g.style.setProperty('--pct',h);$('railPct').textContent=h+'%';
+  $('rlCpu').textContent=t.cpu+'%';$('rlRam').textContent=t.ram.percent+'%';$('rlDisk').textContent=t.storage.percent+'%';$('rlSwap').textContent=t.swap.percent+'%';
+}
+async function loadRailActivity(){
+  const el=$('railActivity');if(!el)return;
+  try{
+    const res=await api('/api/activity');const logs=(res.logs||[]).slice(-5).reverse();
+    el.innerHTML=logs.map(l=>{const tm=(l.time||l.ts||'').toString();const hm=tm.length>=16?tm.slice(11,16):'';
+      const cls=l.level==='err'?'bad':l.level==='warn'?'warn':'ok';
+      return `<div class="rail-item"><i class="ri-ic ${cls}"></i><div><b>${escapeHtml(String(l.type||l.kind||'Event'))}</b><small>${escapeHtml(String(l.message||l.text||'')).slice(0,48)}</small></div><em>${hm}</em></div>`}).join('')||'<div class="ov-empty">No activity</div>';
   }catch(e){}
 }
 let telemetryTimer=null;
