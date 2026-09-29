@@ -952,7 +952,89 @@ ALL_PERMISSIONS = {
     "bot": "مدیریت ربات",
     "admins": "مدیریت ادمین‌ها",
     "settings": "تنظیمات پنل",
+    # --- دسترسی‌های جزئی (v2) ---
+    "inbound_create": "ساخت اینباند جدید",
+    "inbound_edit": "ویرایش اینباند",
+    "inbound_delete": "حذف اینباند",
+    "client_create": "ساخت کلاینت",
+    "client_edit": "ویرایش کلاینت / تغییر وضعیت",
+    "client_delete": "حذف کلاینت",
+    "client_reset": "ریست مصرف کلاینت",
+    "outbound_manage": "مدیریت خروجی / پراکسی",
+    "live_connections": "مشاهده اتصال‌های زنده و IP",
 }
+
+# کلیدهای جزئی: برای ادمین‌های قدیمی (بدون perm_v2) با داشتن «inbounds» مجاز می‌مانند
+GRANULAR_PERMISSIONS = {
+    "inbound_create", "inbound_edit", "inbound_delete", "client_create", "client_edit",
+    "client_delete", "client_reset", "outbound_manage", "live_connections",
+}
+
+import contextvars as _ctxvars
+# وقتی مالک هنگام ساخت اینباند گزینه «محدودکردن ادمین به همین اینباند» را بزند، make_link از اینجا می‌خواند
+_CREATE_RESTRICT = _ctxvars.ContextVar("vw_create_restrict", default=None)
+
+
+def has_permission(admin_id: str, key: str) -> bool:
+    if admin_id == "owner":
+        return True
+    a = ADMINS.get(admin_id) or {}
+    perms = set(a.get("permissions") or {"dashboard"})
+    if key in perms:
+        return True
+    if key in GRANULAR_PERMISSIONS and not a.get("perm_v2"):
+        return "inbounds" in perms          # سازگاری با ادمین‌های قدیمی
+    return False
+
+
+def admin_scope(admin_id: str):
+    """None = بدون محدودیت. وگرنه مجموعه‌ی UUID اینباندهایی که ادمین فقط به آن‌ها دسترسی دارد."""
+    if admin_id == "owner":
+        return None
+    a = ADMINS.get(admin_id) or {}
+    lst = a.get("allowed_inbounds") or []
+    return set(lst) if lst else None
+
+
+def link_in_scope(scope, uid: str) -> bool:
+    if scope is None:
+        return True
+    if uid in scope:
+        return True
+    link = LINKS.get(uid) or {}
+    return link.get("parent_inbound_id") in scope
+
+
+def scope_replace_uid(old: str, new: str):
+    for a in ADMINS.values():
+        lst = a.get("allowed_inbounds")
+        if lst and old in lst:
+            a["allowed_inbounds"] = [new if x == old else x for x in lst]
+
+
+def scope_remove_uid(uid: str):
+    for a in ADMINS.values():
+        lst = a.get("allowed_inbounds")
+        if lst and uid in lst:
+            a["allowed_inbounds"] = [x for x in lst if x != uid]
+
+
+def _apply_create_restrict(uid: str):
+    """در make_link صدا زده می‌شود؛ ادمین انتخاب‌شده را به همین اینباند محدود می‌کند."""
+    st = _CREATE_RESTRICT.get()
+    if not st:
+        return
+    a = ADMINS.get(st["admin_id"])
+    if not a:
+        return
+    if st["mode"] == "only" and not st["seen"]:
+        a["allowed_inbounds"] = [uid]          # فقط همین یکی (جایگزین محدودیت‌های قبلی)
+    else:
+        lst = list(a.get("allowed_inbounds") or [])
+        if uid not in lst:
+            lst.append(uid)
+        a["allowed_inbounds"] = lst
+    st["seen"] += 1
 
 BOT_TEXTS = {
     "welcome": "🛡 <b>VodiWalker Control Center</b>\n\nاز منوی زیر عملیات موردنظر را انتخاب کنید.",
@@ -1208,6 +1290,8 @@ async def require_auth(
         raise HTTPException(status_code=401, detail="unauthorized")
     if info.get("admin_id") != "owner":
         path = request.url.path
+        method = request.method.upper()
+        aid = info.get("admin_id", "")
         permission = "dashboard"
         if path.startswith("/api/links") or path.startswith("/api/protocols") or path.startswith("/api/reality") or path.startswith("/api/proxies"):
             permission = "inbounds"
@@ -1225,9 +1309,125 @@ async def require_auth(
             permission = "settings"
         elif path.startswith("/api/telemetry") or path.startswith("/api/network"):
             permission = "dashboard"
-        if permission not in permissions_for_admin(info.get("admin_id", "")):
+        if permission not in permissions_for_admin(aid):
             raise HTTPException(status_code=403, detail="دسترسی این قابلیت برای این ادمین فعال نیست")
+
+        scope = admin_scope(aid)
+        await _enforce_granular_and_scope(request, aid, scope, path, method)
+    else:
+        await _prepare_owner_create_restrict(request)
     return token
+
+
+_SCOPED_STATIC_OK = ("/api/protocols", "/api/telemetry", "/stats", "/api/me")
+_LINK_SPECIAL = {"auto", "combo", "outbound"}
+
+
+def _forbid(msg="این ادمین فقط به اینباند مشخص‌شده دسترسی دارد"):
+    raise HTTPException(status_code=403, detail=msg)
+
+
+async def _safe_json(request: Request):
+    try:
+        data = await request.json()
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _link_kind_perm(uid: str, inbound_key: str, client_key: str) -> str:
+    link = LINKS.get(uid) or {}
+    return client_key if link.get("parent_inbound_id") else inbound_key
+
+
+async def _enforce_granular_and_scope(request: Request, aid: str, scope, path: str, method: str):
+    parts = [x for x in path.split("/") if x]          # ['api','links','<uid>','clients',...]
+    need = None
+    uid = None
+
+    if path.startswith("/api/links"):
+        sub = parts[2] if len(parts) > 2 else None
+        if sub in _LINK_SPECIAL:
+            if method == "POST" and sub in ("auto", "combo"):
+                need = "inbound_create"
+            elif sub == "outbound":
+                need = "outbound_manage"
+        elif sub is None:
+            if method == "POST":
+                need = "inbound_create"
+        else:
+            uid = sub
+            tail = parts[3] if len(parts) > 3 else None
+            if tail is None:
+                if method == "PATCH":
+                    need = _link_kind_perm(uid, "inbound_edit", "client_edit")
+                elif method == "DELETE":
+                    need = _link_kind_perm(uid, "inbound_delete", "client_delete")
+            elif tail == "clients":
+                if method == "POST":
+                    need = "client_create"
+                elif method == "DELETE":
+                    need = "client_delete"
+            elif tail == "reset-usage":
+                need = "client_reset"
+            elif tail in ("action", "regenerate"):
+                need = _link_kind_perm(uid, "inbound_edit", "client_edit")
+    elif path.startswith("/api/proxies"):
+        if method != "GET":
+            need = "outbound_manage"
+    elif path.startswith("/api/connections"):
+        need = "live_connections"
+
+    if need and not has_permission(aid, need):
+        raise HTTPException(status_code=403, detail="دسترسی این قابلیت برای این ادمین فعال نیست")
+
+    if scope is None:
+        return
+
+    # ---- ادمینِ محدود به اینباند مشخص ----
+    if path.startswith("/api/links"):
+        sub = parts[2] if len(parts) > 2 else None
+        if sub is None:
+            if method != "GET":
+                _forbid("ادمین محدود‌شده نمی‌تواند اینباند جدید بسازد")
+            return                                        # GET لیست؛ داخل endpoint فیلتر می‌شود
+        if sub in _LINK_SPECIAL:
+            if sub == "outbound":
+                body = await _safe_json(request)
+                for u in (body.get("uuids") or []):
+                    if not link_in_scope(scope, str(u)):
+                        _forbid()
+                return
+            _forbid("ادمین محدود‌شده نمی‌تواند اینباند جدید بسازد")
+        if not link_in_scope(scope, sub) or sub not in LINKS:
+            raise HTTPException(status_code=404, detail="link not found")
+        return
+    if path.startswith(_SCOPED_STATIC_OK):
+        return
+    _forbid("این بخش برای ادمین محدود‌شده در دسترس نیست")
+
+
+async def _prepare_owner_create_restrict(request: Request):
+    """مالک هنگام ساخت اینباند می‌تواند restrict_admin_id بفرستد."""
+    if request.method.upper() != "POST":
+        return
+    path = request.url.path
+    if path not in ("/api/links", "/api/links/auto", "/api/links/combo"):
+        return
+    body = await _safe_json(request)
+    rid = str(body.get("restrict_admin_id") or "").strip()
+    if not rid or rid not in ADMINS:
+        return
+    mode = "add" if str(body.get("restrict_mode") or "only") == "add" else "only"
+    _CREATE_RESTRICT.set({"admin_id": rid, "mode": mode, "seen": 0})
+
+
+async def actor_scope(request: Request):
+    info = await get_session_info(request.cookies.get(SESSION_COOKIE))
+    if not info:
+        return None
+    return admin_scope(info.get("admin_id", "owner"))
+
 
 
 def set_auth_cookie(
@@ -2044,7 +2244,7 @@ async def make_link(
 
     record = {
         "label":
-            sanitize_config_name((label or "").strip() or random_config_name()),
+            (sanitize_display_name((label or "").strip()) if (label or "").strip() else random_config_name()),
 
         "limit_bytes":
             max(
@@ -2158,6 +2358,8 @@ async def make_link(
 
     async with LINKS_LOCK:
         LINKS[uid] = record
+        if not record.get("parent_inbound_id"):
+            _apply_create_restrict(uid)
 
     bump_daily_stat("new_links")
 
@@ -2215,6 +2417,7 @@ async def remove_link(
         )
 
         del LINKS[uid]
+        scope_remove_uid(uid)
 
     if sub_id:
 
@@ -3076,9 +3279,16 @@ async def api_me(
         admin = ADMINS.get(admin_id, {})
         username = admin.get("username", admin_id)
 
+    _a = ADMINS.get(admin_id, {}) if admin_id != "owner" else {}
     return {
         "authenticated": True,
-        "admin": {"id": admin_id, "username": username, "role": role},
+        "admin": {
+            "id": admin_id, "username": username, "role": role,
+            "permissions": sorted(permissions_for_admin(admin_id)),
+            "granted": sorted(k for k in ALL_PERMISSIONS if has_permission(admin_id, k)),
+            "allowed_inbounds": list(_a.get("allowed_inbounds") or []),
+            "scoped": bool(_a.get("allowed_inbounds")),
+        },
     }
 
 
@@ -3562,7 +3772,7 @@ async def create_link_api(
     if cat.get("random_name") or not str(label_val).strip():
         label_val = random_config_name()
     else:
-        label_val = sanitize_config_name(str(label_val))
+        label_val = sanitize_display_name(str(label_val))
 
     uid, link = await make_link(
         label=label_val,
@@ -3630,6 +3840,26 @@ COMBO_MEMBERS = (("vless-ws", "ws"), ("xhttp-packet-up", "xhttp"))
 MAX_COMBO_EXITS = 20
 MAX_BULK_LINKS = 500
 
+# اموجی‌های «خفن» که به‌ترتیب برای هر خروجی/کانفیگ جدید استفاده می‌شن (چرخشی).
+CONFIG_EMOJI_POOL = [
+    "🚀", "⚡", "🔥", "🛡", "🌪", "💎", "🦾", "🌊", "🎯", "🧿",
+    "🐉", "🦅", "🌟", "🛰", "🧊", "🌀", "🪐", "🦁", "🔱", "💠",
+    "🧨", "🌈", "🦈", "🐺", "🔮", "🛸", "🧬", "🕹", "🎇", "🌋",
+]
+
+
+def sanitize_display_name(name: str, fallback: str = "VodiWalker") -> str:
+    """برخلاف sanitize_config_name (که فقط ASCII نگه می‌داره و برای اسم داخلیِ
+    گروه/اسلاگ استفاده می‌شه)، این تابع اسمی که کاربر برای نمایش در کلاینت
+    انتخاب کرده (فارسی/انگلیسی/هر چیزی، به‌همراه فاصله) رو دست‌نخورده نگه
+    می‌داره و فقط کاراکترهای کنترلی/خط‌جدید رو حذف و طولش رو محدود می‌کنه."""
+    cleaned = "".join(ch for ch in str(name or "") if ch.isprintable()).strip()
+    return cleaned[:40] if cleaned else fallback
+
+
+def emoji_for_index(i: int) -> str:
+    return CONFIG_EMOJI_POOL[i % len(CONFIG_EMOJI_POOL)]
+
 
 def normalize_exit_ids(body: dict) -> list[str]:
     """لیست یکتا و اعتبارسنجی‌شده‌ی خروجی‌ها از بدنه‌ی درخواست.
@@ -3687,8 +3917,10 @@ async def create_combo_subscription(
 ) -> dict:
     """یک گروه ساب می‌سازد و برای هر خروجی یک WS + یک XHTTP داخلش می‌گذارد."""
     host = get_host(request)
+    display_name = sanitize_display_name(label) if str(label or "").strip() else "VodiWalker"
     base = sanitize_config_name(label) if str(label or "").strip() else auto_config_name()
     infos = {pid: outbound_info(pid) for pid in exits}
+    _emoji_counter = 0
 
     def _flag_country(info):
         return f"{info.get('flag') or ''} {info.get('country') or info.get('name') or ''}".strip()
@@ -3708,9 +3940,14 @@ async def create_combo_subscription(
             # می‌کنه (de, de2, de3, ...) — دقیقاً همون چیزی که برای «تعداد کل کانفیگ» لازمه.
             tag = _exit_tag(infos[pid], used_tags) if multi else ""
             row = {"outbound_proxy_id": pid, "outbound": infos[pid], "tag": tag}
+            # هر خروجی/جفت یک اموجی خفنِ مخصوص خودش می‌گیره؛ اسم نمایشی برای همه‌شون
+            # همون اسمیه که کاربر انتخاب کرده (WS و XHTTP یک خروجی هم اموجی مشترک دارن).
+            pair_emoji = emoji_for_index(_emoji_counter)
+            _emoji_counter += 1
+            display_label = f"{pair_emoji} {display_name}"
             for protocol, suffix in COMBO_MEMBERS:
                 uid, link = await make_link(
-                    label=f"{base}{tag}{suffix}",
+                    label=display_label,
                     limit_bytes=limit_bytes,
                     expires_at=expires_at,
                     note=note,
@@ -3734,7 +3971,7 @@ async def create_combo_subscription(
                     # combo_tag یعنی «شریک جفت»: ws و xhttپ همین تگ، تا موقع ساخت
                     # کلاینت بشه جفتشون رو پیدا کرد و توی یک ساب گذاشت (نه دوتا جدا).
                     LINKS[uid]["combo_tag"] = tag
-                    LINKS[uid]["combo_base_label"] = base
+                    LINKS[uid]["combo_base_label"] = display_name
                     LINKS[uid]["client_limit"] = client_limit
                     LINKS[uid]["security_profile"] = security_profile
                 row[suffix] = uid
@@ -3791,12 +4028,20 @@ async def add_combo_exits(sub_id: str, host: str, new_exits: list[str]) -> dict:
     multi = True  # با بیش از یک خروجی در گروه، تگ‌گذاری همیشه لازمه
 
     rows, items = [], []
-    for pid in to_add:
+    _existing_exit_count = len(existing_pairs) // max(1, len(COMBO_MEMBERS))
+    _combo_display_name = (
+        template.get("combo_base_label")
+        or sanitize_display_name(template.get("label") or "")
+        or "VodiWalker"
+    )
+    for _add_i, pid in enumerate(to_add):
         tag = _exit_tag(infos[pid], used_tags)
         row = {"outbound_proxy_id": pid, "outbound": infos[pid], "tag": tag}
+        pair_emoji = emoji_for_index(_existing_exit_count + _add_i)
+        display_label = f"{pair_emoji} {_combo_display_name}"
         for protocol, suffix in COMBO_MEMBERS:
             uid, link = await make_link(
-                label=f"{template.get('combo_base_label') or sanitize_config_name(template.get('label') or '') or auto_config_name()}{tag}{suffix}",
+                label=display_label,
                 limit_bytes=template.get("limit_bytes", 0),
                 expires_at=template.get("expires_at"),
                 note=template.get("note", ""),
@@ -4231,9 +4476,12 @@ async def list_links(
 ):
 
     host = get_host(request)
+    _scope = await actor_scope(request)
 
     async with LINKS_LOCK:
         snapshot = dict(LINKS)
+    if _scope is not None:
+        snapshot = {u: l for u, l in snapshot.items() if u in _scope or l.get("parent_inbound_id") in _scope}
 
     result = []
 
@@ -4777,6 +5025,7 @@ async def regenerate_link(
         # مصرف قبلی حفظ می‌شود (این فقط تعویض کلید/لینک است، نه ریست حجم)
         LINKS[new_uid] = new_link
         del LINKS[uid]
+        scope_replace_uid(uid, new_uid)
 
         parent_id = old_link.get("parent_inbound_id")
         sub_id = old_link.get("sub_id")
@@ -6782,11 +7031,27 @@ async def delete_category(cid: str, _=Depends(require_auth)):
 
 @app.get("/stats")
 async def get_stats(
+    request: Request,
     _=Depends(require_auth),
 ):
 
     async with LINKS_LOCK:
         snapshot = dict(LINKS)
+    _scope = await actor_scope(request)
+    if _scope is not None:
+        snapshot = {u: l for u, l in snapshot.items() if u in _scope or l.get("parent_inbound_id") in _scope}
+        used = sum(int(l.get("used_bytes", 0) or 0) for l in snapshot.values())
+        return {
+            "service": APP_NAME, "version": APP_VERSION, "scoped": True,
+            "active_connections": sum(1 for c in connections.values() if c.get("uuid") in snapshot),
+            "total_traffic_mb": round(used / (1024 ** 2), 2), "total_traffic_bytes": used,
+            "total_requests": 0, "total_errors": 0, "uptime": uptime(),
+            "timestamp": datetime.now().isoformat(), "hourly": {}, "recent_errors": [],
+            "links_count": len(snapshot),
+            "active_links": sum(1 for l in snapshot.values() if is_link_allowed(l)),
+            "expired_links": sum(1 for l in snapshot.values() if is_link_expired(l)),
+            "subs_count": 0,
+        }
 
     return {
         "service":
@@ -7440,7 +7705,21 @@ def _admin_public(admin_id: str, admin: dict) -> dict:
         "credit_stars": admin.get("credit_stars", 0),
         "full_name": admin.get("full_name", ""),
         "telegram_id": admin.get("telegram_id", ""),
+        "allowed_inbounds": list(admin.get("allowed_inbounds") or []),
+        "perm_v2": bool(admin.get("perm_v2")),
     }
+
+
+def _clean_allowed_inbounds(raw):
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for u in raw:
+        u = str(u)
+        l = LINKS.get(u)
+        if l and not l.get("parent_inbound_id") and u not in out:
+            out.append(u)
+    return out
 
 
 @app.get("/api/admins")
@@ -7491,7 +7770,9 @@ async def api_create_admin(request: Request, token=Depends(require_owner)):
         "username": username,
         "password_hash": hash_password(password),
         "role": "admin",
-        "permissions": list(body.get("permissions") or {"dashboard", "inbounds", "subscriptions"}),
+        "permissions": [p for p in (body.get("permissions") or ["dashboard", "inbounds", "subscriptions"]) if p in ALL_PERMISSIONS],
+        "perm_v2": True,
+        "allowed_inbounds": _clean_allowed_inbounds(body.get("allowed_inbounds")),
         "active": True,
         "created_at": datetime.now().isoformat(),
         "last_login_at": None,
@@ -7541,6 +7822,10 @@ async def api_update_admin(admin_id: str, request: Request, token=Depends(requir
         if not isinstance(raw_permissions, list):
             raise HTTPException(status_code=400, detail="لیست دسترسی‌ها نامعتبر است")
         admin["permissions"] = [p for p in raw_permissions if p in ALL_PERMISSIONS]
+        admin["perm_v2"] = True
+
+    if "allowed_inbounds" in body:
+        admin["allowed_inbounds"] = _clean_allowed_inbounds(body.get("allowed_inbounds"))
 
     if "active" in body:
         admin["active"] = bool(body["active"])
@@ -7708,6 +7993,8 @@ async def api_approve_admin_request(req_id: str, request: Request, token=Depends
         "credit_stars": credit_stars,
         "full_name": req.get("full_name", ""),
         "telegram_id": req.get("telegram_id", ""),
+        "perm_v2": True,
+        "allowed_inbounds": _clean_allowed_inbounds(body.get("allowed_inbounds")),
     }
 
     req["status"] = "approved"
