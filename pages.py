@@ -135,7 +135,10 @@ html[dir="ltr"] .toggle-eye{left:auto;right:12px}
 }
 
 /* perf: removed infinite blur/rotate/blend animations that froze phones & Windows */
-.grid-bg:before,.scanline,.ambient-orb,.badge-glow,.login-card-glow,.orbit-ring,.orbit-ring2,.dot{animation:none!important;filter:none!important}
+.grid-bg:before,.scanline,.ambient-orb,.login-card-glow,.dot{animation:none!important;filter:none!important}
+.orbit-ring,.orbit-ring2{will-change:transform;backface-visibility:hidden}
+.badge-glow{filter:none!important;will-change:opacity}
+.badge-wrap{transform:translateZ(0)}
 .scanline,.ambient-orb,.login-card-glow{display:none!important}
 .areg-overlay{backdrop-filter:none!important}
 </style>
@@ -867,6 +870,30 @@ body{background:radial-gradient(900px 500px at 75% -10%,rgba(124,92,255,.10),tra
 .chart-tabs button.on{background:linear-gradient(135deg,#a855f7,#6d28d9);color:#fff;border-color:transparent;box-shadow:0 6px 18px -6px rgba(168,85,247,.8)}
 @media(max-width:1180px){.ov-shell{grid-template-columns:1fr}.ov-rail{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}}
 @media(max-width:820px){.traffic-layout,.bottom-grid{grid-template-columns:1fr}}
+
+/* top row = 5 cards like mock */
+.resource-grid{grid-template-columns:repeat(5,minmax(0,1fr))!important}
+.resource-grid>:nth-child(5){order:1}.resource-grid>:nth-child(4){order:2}.resource-grid>:nth-child(6){order:3}.resource-grid>:nth-child(3){order:4}.resource-grid>:nth-child(1){order:5}.resource-grid>:nth-child(2){display:none}
+@media(max-width:1180px){.resource-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}.resource-grid>:nth-child(6){grid-column:auto}}
+/* admins */
+.adm-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:0 18px 14px}
+.adm-strip>div{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:rgba(168,85,247,.07)}
+.adm-strip i{font-size:18px;color:#c4b5fd}.adm-strip b{font-size:18px}.adm-strip small{color:var(--sub);font-size:10.5px;margin-inline-start:auto}
+.admin-grid{display:grid!important;grid-template-columns:repeat(auto-fill,minmax(310px,1fr))!important;gap:14px!important}
+.adm-pro{display:flex;flex-direction:column;gap:12px;padding:16px!important;border-radius:18px!important;border:1px solid var(--line)!important;background:linear-gradient(160deg,rgba(124,58,237,.16),rgba(11,12,34,.94) 60%)!important}
+.adm-pro.is-owner{border-color:rgba(245,158,11,.5)!important;background:linear-gradient(160deg,rgba(245,158,11,.14),rgba(11,12,34,.94) 60%)!important}
+.adm-pro.is-inactive{opacity:.6}
+.adm-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.adm-stats>div{padding:9px 6px;text-align:center;border-radius:11px;background:rgba(255,255,255,.03);border:1px solid var(--line)}
+.adm-stats b{display:block;font-size:14px}.adm-stats small{color:var(--sub2);font-size:9.5px}
+.adm-scope{padding:11px;border-radius:12px;border:1px dashed var(--line2);background:rgba(0,0,0,.18)}
+.adm-scope-head{display:flex;justify-content:space-between;font-size:11px;margin-bottom:8px}.adm-scope-head em{font-style:normal;color:var(--sub)}
+.adm-bar{height:6px;border-radius:6px;background:var(--line);overflow:hidden}.adm-bar i{display:block;height:100%;background:linear-gradient(90deg,#a855f7,#22d3ee)}.adm-bar i.full{background:linear-gradient(90deg,#22c58b,#22d3ee)}
+.adm-ibs{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.adm-ib{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:8px;font-size:10.5px;background:rgba(168,85,247,.14);border:1px solid var(--line2);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.adm-ib.all{background:rgba(34,197,139,.14);border-color:rgba(34,197,139,.4);color:#5eead4}.adm-ib.more{background:transparent}.adm-ib.none{color:var(--bad)}
+.adm-perms summary{cursor:pointer;font-size:11px;color:var(--sub)}.adm-perms .admin-perm-row{margin-top:8px}
+@media(max-width:820px){.adm-strip{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -937,6 +964,8 @@ body{background:radial-gradient(900px 500px at 75% -10%,rgba(124,92,255,.10),tra
         <div class="resource-card"><div class="rc-head"><span><i class="ti ti-device-ram"></i> RAM</span><b id="ramVal">—</b></div><div class="rc-sub" id="ramSub">—</div><svg class="spark" id="ramSpark" viewBox="0 0 240 46" preserveAspectRatio="none"></svg></div>
         <div class="resource-card"><div class="rc-head"><span><i class="ti ti-bolt"></i> SWAP</span><b id="swapVal">—</b></div><div class="rc-sub" id="swapSub">—</div><svg class="spark" id="swapSpark" viewBox="0 0 240 46" preserveAspectRatio="none"></svg></div>
         <div class="resource-card"><div class="rc-head"><span><i class="ti ti-database"></i> STORAGE</span><b id="storageVal">—</b></div><div class="rc-sub" id="storageSub">—</div><svg class="spark" id="storageSpark" viewBox="0 0 240 46" preserveAspectRatio="none"></svg></div>
+        <div class="resource-card"><div class="rc-head"><span><i class="ti ti-server"></i> INSTANCES</span><b id="instVal">0</b></div><div class="rc-sub" id="instSub">Active: 0 | Stopped: 0</div><svg class="spark" id="instSpark" viewBox="0 0 240 46" preserveAspectRatio="none"></svg></div>
+        <div class="resource-card"><div class="rc-head"><span><i class="ti ti-world"></i> NETWORK</span><b id="netVal">0</b></div><div class="rc-sub" id="netSub">↑ 0 · ↓ 0</div><svg class="spark" id="netSpark" viewBox="0 0 240 46" preserveAspectRatio="none"></svg></div>
       </div>
       <div class="traffic-layout">
         <div class="card traffic-card"><div class="panel-head"><div><b>OVERALL SPEED</b><small id="speedMeta">Network throughput</small></div><div class="traffic-legend"><span>↑ <b id="txRate">0 B/s</b></span><span>↓ <b id="rxRate">0 B/s</b></span></div></div><div class="chart-tabs" id="chartTabs"><button class="on" data-k="net" onclick="setChartTab('net')"><i class="ti ti-activity"></i> Network</button><button data-k="cpu" onclick="setChartTab('cpu')"><i class="ti ti-cpu"></i> CPU</button><button data-k="mem" onclick="setChartTab('mem')"><i class="ti ti-device-ram"></i> Memory</button><button data-k="disk" onclick="setChartTab('disk')"><i class="ti ti-database"></i> Disk</button></div><div class="big-chart"><svg id="trafficChart" viewBox="0 0 900 260" preserveAspectRatio="none"></svg></div><div class="traffic-foot"><div><small>SENT</small><b id="sentTotal">0 B</b></div><div><small>RECEIVED</small><b id="recvTotal">0 B</b></div><div><small>LIVE THROUGHPUT</small><b id="liveRate">↑ 0 B/s ↓ 0 B/s</b></div></div></div>
@@ -1047,7 +1076,7 @@ body{background:radial-gradient(900px 500px at 75% -10%,rgba(124,92,255,.10),tra
         <div class="admins-summary" id="adminsSummary"><div class="sum"><b id="adminTotal">—</b><small>حساب مدیریتی</small></div><div class="sum"><b id="adminActive">—</b><small>حساب فعال</small></div><div class="sum"><b id="adminOwner">1</b><small>مالک پنل</small></div></div>
       </div>
       <div class="card admin-directory" id="adminReqCard" style="margin-bottom:14px;display:none"><div class="panel-head"><div><b>درخواست‌های ثبت‌نام ادمینی</b><small>افرادی که از صفحه ورود درخواست همکاری داده‌اند؛ بررسی کن و تصمیم بگیر.</small></div><span class="command-badge" id="adminReqBadge">۰ درخواست</span></div><div id="adminReqBody" style="padding:14px 18px"></div></div>
-      <div class="card admin-directory"><div class="panel-head"><div><b>فهرست ادمین‌ها</b><small>وضعیت، دسترسی و فعالیت هر ادمین را از یکجا بررسی و مدیریت کن.</small></div><span class="directory-live"><i></i> کنترل فعال</span></div><div class="admin-grid" id="adminsBody"></div></div>
+      <div class="card admin-directory"><div class="panel-head"><div><b>فهرست ادمین‌ها</b><small>وضعیت، دسترسی و فعالیت هر ادمین را از یکجا بررسی و مدیریت کن.</small></div><span class="directory-live"><i></i> کنترل فعال</span></div><div class="adm-strip"><div><i class="ti ti-lock"></i><b id="adScoped">0</b><small>محدود به اینباند</small></div><div><i class="ti ti-lock-open"></i><b id="adFull">0</b><small>دسترسی به همه</small></div><div><i class="ti ti-network"></i><b id="adInb">0</b><small>کل اینباندها</small></div></div><div class="admin-grid" id="adminsBody"></div></div>
     </div>
 
     <!-- NODES -->
@@ -1972,6 +2001,8 @@ async function refreshOverview(){
     LINKS = linksRes.links || [];
     $('nb-links').textContent = LINKS.filter(x=>!x.is_client).length;
     $('trafficTotalVal').textContent = fmtBytes(stats.total_traffic_bytes || 0);
+    const _ib=LINKS.filter(x=>!x.is_client),_ac=_ib.filter(x=>x.active&&!x.expired).length;
+    $('instVal').textContent=_ib.length;$('instSub').textContent='Active: '+_ac+' | Stopped: '+(_ib.length-_ac);
   }catch(e){ toast(e.message, false); }
   if(!ACTIVE_NODE) try{
     const s = await api('/api/settings');
@@ -2022,7 +2053,7 @@ async function refreshTelemetry(){
     }else{
       pushSeries(TEL.cpu,t.cpu);pushSeries(TEL.ram,t.ram.percent);pushSeries(TEL.swap,t.swap.percent);pushSeries(TEL.storage,t.storage.percent);pushSeries(TEL.traffic,(t.network.tx_bps+t.network.rx_bps));pushSeries(TEL.conn,t.connections);
     }
-    drawSpark('cpuSpark',TEL.cpu);drawSpark('ramSpark',TEL.ram);drawSpark('swapSpark',TEL.swap);drawSpark('storageSpark',TEL.storage);drawChart('trafficChart',chartSeries(),chartMax());drawChart('connChart',TEL.conn);
+    drawSpark('cpuSpark',TEL.cpu);drawSpark('ramSpark',TEL.ram);drawSpark('swapSpark',TEL.swap);drawSpark('storageSpark',TEL.storage);drawSpark('netSpark',TEL.traffic);drawSpark('instSpark',TEL.conn);$('netVal').textContent=fmtBytes(t.network.tx_bps+t.network.rx_bps)+'/s';$('netSub').textContent='↑ '+fmtBytes(t.network.tx_bps)+' · ↓ '+fmtBytes(t.network.rx_bps);drawChart('trafficChart',chartSeries(),chartMax());drawChart('connChart',TEL.conn);
     const _hc=Number(t.cpu)||0,_hr=Number(t.ram.percent)||0,_hs=Number(t.storage.percent)||0;
     const healthPct=Math.max(0,Math.min(100,Math.round(100-((_hc*0.4)+(_hr*0.35)+(_hs*0.25)))));
     const hg=$('healthGauge'),hp=$('healthPct'),hl=$('healthLabel');
@@ -3373,11 +3404,14 @@ const ADMIN_PERM_LABELS = {dashboard:'داشبورد',inbounds:'اینباند �
 async function loadAdmins(){
   try{
     const res = await api('/api/admins');
+    if(!(LINKS||[]).length){try{const lr=await api('/api/links');LINKS=lr.links||[];}catch(e){}}
     ADMIN_CACHE = res.admins || [];
     const adminRows = res.admins || [];
     const activeAdmins = adminRows.filter(a=>a.active).length;
     if($('adminTotal')) $('adminTotal').textContent = adminRows.length;
     if($('adminActive')) $('adminActive').textContent = activeAdmins;
+    const _n=adminRows.filter(x=>x.role!=='owner'&&(x.allowed_inbounds||[]).length).length;
+    if($('adScoped')){$('adScoped').textContent=_n;$('adFull').textContent=adminRows.length-_n;$('adInb').textContent=(LINKS||[]).filter(x=>!x.is_client).length;}
     $('adminsBody').innerHTML = adminRows.map(a=>{
       const isOwner = a.role==='owner';
       const initials = (a.username||'?').replace(/[^A-Za-z0-9آ-ی]/g,'').slice(0,2).toUpperCase() || '?';
@@ -3391,23 +3425,33 @@ async function loadAdmins(){
         <button class="iconbtn edit" title="ویرایش دسترسی" aria-label="ویرایش دسترسی" onclick="editAdmin('${a.id}')"><i class="ti ti-edit"></i></button>
         <button class="iconbtn power" title="${a.active?'غیرفعال‌سازی':'فعال‌سازی'}" onclick="toggleAdmin('${a.id}', ${!a.active})"><i class="ti ti-power"></i></button>
         <button class="iconbtn danger" title="حذف ادمین" aria-label="حذف ادمین" onclick="deleteAdmin('${a.id}')"><i class="ti ti-trash" style="color:var(--bad)"></i></button>`;
+      const ibAll=(LINKS||[]).filter(x=>!x.is_client);
+      const scope=isOwner?[]:(a.allowed_inbounds||[]);
+      const full=isOwner||!scope.length;
+      const picked=scope.map(u=>ibAll.find(x=>x.uuid===u)).filter(Boolean);
+      const pct=full?100:Math.round(picked.length/Math.max(1,ibAll.length)*100);
+      const ibChips=full
+        ? '<span class="adm-ib all"><i class="ti ti-infinity"></i> همه اینباندها ('+ibAll.length+')</span>'
+        : (picked.slice(0,4).map(x=>`<span class="adm-ib"><i class="ti ti-plug-connected"></i>${escapeHtml(x.label||x.name||x.uuid.slice(0,8))}</span>`).join('')+(picked.length>4?`<span class="adm-ib more">+${picked.length-4}</span>`:'')||'<span class="adm-ib none">اینباند معتبری یافت نشد</span>');
+      const permN=isOwner?'∞':(a.permissions||[]).length;
       return `
-      <div class="admin-card ${isOwner?'is-owner':''} ${a.active?'':'is-inactive'}">
+      <div class="admin-card adm-pro ${isOwner?'is-owner':''} ${a.active?'':'is-inactive'}">
         <div class="admin-card-top">
-          <div class="admin-id">
-            <div class="admin-avatar">${escapeHtml(initials)}</div>
-            <div class="admin-meta">
-              <div class="admin-name">${escapeHtml(a.username)}</div>
-              <div class="admin-sub"><span class="admin-status-dot"></span>${a.active?'فعال':'غیرفعال'}</div>
-            </div>
-          </div>
+          <div class="admin-id"><div class="admin-avatar">${escapeHtml(initials)}</div>
+            <div class="admin-meta"><div class="admin-name">${escapeHtml(a.username)}</div>
+            <div class="admin-sub"><span class="admin-status-dot"></span>${a.active?'فعال':'غیرفعال'}</div></div></div>
           <span class="admin-role-badge ${isOwner?'owner':'admin'}"><i class="ti ti-${isOwner?'crown':'shield-check'}"></i>${isOwner?'مالک':'ادمین'}</span>
         </div>
-        <div class="admin-perm-row">${chips}</div>
-        <div class="admin-card-foot">
-          <div class="admin-login-block"><span class="admin-login-label">آخرین فعالیت</span><span class="admin-login mono"><i class="ti ti-clock"></i> ${escapeHtml(lastLogin)}</span></div>
-          <div class="row-actions"><span class="admin-actions-label">کنترل حساب</span>${actions}</div>
+        <div class="adm-stats">
+          <div><b>${full?'همه':picked.length+' / '+ibAll.length}</b><small>اینباند مجاز</small></div>
+          <div><b>${permN}</b><small>دسترسی</small></div>
+          <div><b class="mono" style="font-size:10.5px">${escapeHtml(lastLogin.slice(5))}</b><small>آخرین ورود</small></div>
         </div>
+        <div class="adm-scope"><div class="adm-scope-head"><span><i class="ti ti-lock${full?'-open':''}"></i> محدودیت اینباند</span><em>${full?'بدون محدودیت':pct+'٪ از اینباندها'}</em></div>
+          <div class="adm-bar"><i class="${full?'full':''}" style="width:${pct}%"></i></div>
+          <div class="adm-ibs">${ibChips}</div></div>
+        <details class="adm-perms"><summary>دسترسی‌ها</summary><div class="admin-perm-row">${chips}</div></details>
+        <div class="admin-card-foot"><div class="row-actions">${actions}</div></div>
       </div>`;
     }).join('');
   }catch(e){ toast(e.message, false); }
