@@ -1005,6 +1005,18 @@ def link_in_scope(scope, uid: str) -> bool:
     return link.get("parent_inbound_id") in scope
 
 
+def client_visible(link, actor_id: str) -> bool:
+    """کلاینت فقط برای سازنده‌اش دیده می‌شود (کلاینت‌های قدیمی بدون created_by = مالک)."""
+    if not link.get("parent_inbound_id"):
+        return True
+    return (link.get("created_by") or "owner") == actor_id
+
+
+async def actor_id_of(request: Request) -> str:
+    info = await get_session_info(request.cookies.get(SESSION_COOKIE))
+    return (info or {}).get("admin_id", "owner")
+
+
 def scope_replace_uid(old: str, new: str):
     for a in ADMINS.values():
         lst = a.get("allowed_inbounds")
@@ -4260,7 +4272,7 @@ async def set_links_outbound(
 
 async def add_client_to_inbound(uid: str, label: str = None, limit_bytes: int = None, expires_days: int = 0,
                                   ip_limit: int = None, speed_limit_bytes: int = None, connection_limit: int = None,
-                                  note: str = None, outbound_proxy_id: str | None = None):
+                                  note: str = None, outbound_proxy_id: str | None = None, created_by: str = "owner"):
     """Core logic to create a real client (child link) under an inbound. Shared by the
     HTTP API and the Telegram bot so both stay in sync."""
     async with LINKS_LOCK:
@@ -4301,6 +4313,7 @@ async def add_client_to_inbound(uid: str, label: str = None, limit_bytes: int = 
     )
     async with LINKS_LOCK:
         LINKS[child_uid]["parent_inbound_id"] = uid
+        LINKS[child_uid]["created_by"] = created_by or "owner"
         LINKS[child_uid]["is_default"] = False
         LINKS[child_uid]["protocol_label"] = protocol_display_label(LINKS[child_uid])
     await save_state()
@@ -4324,7 +4337,8 @@ async def list_inbound_clients(uid: str, request: Request, _=Depends(require_aut
         parent = LINKS.get(uid)
         if not parent:
             raise HTTPException(status_code=404, detail="اینباند پیدا نشد")
-        children = [(cid, dict(link)) for cid, link in LINKS.items() if link.get("parent_inbound_id") == uid]
+        _aid = await actor_id_of(request)
+        children = [(cid, dict(link)) for cid, link in LINKS.items() if link.get("parent_inbound_id") == uid and client_visible(link, _aid)]
     host = get_host(request)
     return {"ok": True, "inbound": get_link_info(parent, uid, host), "clients": [get_link_info(x, cid, host) for cid, x in children]}
 
@@ -4351,7 +4365,10 @@ async def create_inbound_client(uid: str, request: Request, _=Depends(require_au
         if uid not in LINKS:
             raise HTTPException(status_code=404, detail="اینباند پیدا نشد")
         sibling_uid = find_combo_sibling(uid)
+    if not link_in_scope(await actor_scope(request), uid):
+        raise HTTPException(status_code=403, detail="به این اینباند دسترسی ندارید")
     kwargs = dict(
+        created_by=await actor_id_of(request),
         label=body.get("label"),
         limit_bytes=body.get("limit_bytes"),
         expires_days=safe_int(body.get("expires_days", 0), minimum=0),
@@ -4389,7 +4406,11 @@ async def create_inbound_client(uid: str, request: Request, _=Depends(require_au
     return {"ok": True, "client": get_link_info(LINKS[child_uid], child_uid, host)}
 
 @app.delete("/api/links/{uid}/clients/{client_id}")
-async def delete_inbound_client(uid: str, client_id: str, _=Depends(require_auth)):
+async def delete_inbound_client(uid: str, client_id: str, request: Request, _=Depends(require_auth)):
+    _aid = await actor_id_of(request)
+    _c = LINKS.get(client_id)
+    if _c is not None and not client_visible(_c, _aid):
+        raise HTTPException(status_code=404, detail="کلاینت پیدا نشد")
     try:
         await remove_inbound_client(uid, client_id)
     except ValueError as exc:
@@ -4482,6 +4503,8 @@ async def list_links(
         snapshot = dict(LINKS)
     if _scope is not None:
         snapshot = {u: l for u, l in snapshot.items() if u in _scope or l.get("parent_inbound_id") in _scope}
+    _aid = await actor_id_of(request)
+    snapshot = {u: l for u, l in snapshot.items() if client_visible(l, _aid)}
 
     result = []
 
@@ -7038,6 +7061,8 @@ async def get_stats(
     async with LINKS_LOCK:
         snapshot = dict(LINKS)
     _scope = await actor_scope(request)
+    _aid = await actor_id_of(request)
+    snapshot = {u: l for u, l in snapshot.items() if client_visible(l, _aid)}
     if _scope is not None:
         snapshot = {u: l for u, l in snapshot.items() if u in _scope or l.get("parent_inbound_id") in _scope}
         used = sum(int(l.get("used_bytes", 0) or 0) for l in snapshot.values())
