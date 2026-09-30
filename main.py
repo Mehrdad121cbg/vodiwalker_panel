@@ -51,6 +51,39 @@ BOT_TEXTS_LOCKED = True
 BOT_TEXTS_LOCKED_MSG = "ویرایش متن‌های ربات قفل شده است و امکان تغییر ندارد"
 
 SUPPORT_USERNAME = "@VodiWalker"
+CHANNEL_USERNAME = "vodiwalkervpn03"
+
+# تنظیماتی که باید بعد از ری‌استارت هم بمانند (قبلاً فقط در حافظه بودند و با هر ری‌استارت پاک می‌شدند)
+PERSISTED_EXTRA_SETTINGS = (
+    "sub_remark_show_name", "sub_remark_show_volume", "sub_remark_show_id", "sub_remark_show_inbound",
+    "sub_info_line_enabled", "sub_info_line_show_volume", "sub_info_line_show_expiry",
+    "support_username", "channel_username", "name_style_enabled",
+)
+
+_TG_USER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
+
+
+def _clean_tg_username(raw) -> str:
+    value = str(raw or "").strip()
+    for prefix in ("https://t.me/", "http://t.me/", "t.me/", "https://telegram.me/", "@"):
+        if value.lower().startswith(prefix):
+            value = value[len(prefix):]
+    return value.strip().strip("/")
+
+
+def get_support_username() -> str:
+    """آیدی پشتیبان تلگرام (قابل تنظیم از داخل پنل)؛ اگر خالی باشد مقدار پیش‌فرض."""
+    raw = _clean_tg_username(CONFIG.get("support_username"))
+    return "@" + raw if raw and _TG_USER_RE.match(raw) else SUPPORT_USERNAME
+
+
+def get_support_url() -> str:
+    return "https://t.me/" + get_support_username().lstrip("@")
+
+
+def get_channel_url() -> str:
+    raw = _clean_tg_username(CONFIG.get("channel_username"))
+    return "https://t.me/" + (raw if raw and _TG_USER_RE.match(raw) else CHANNEL_USERNAME)
 SUPPORT_URL = "https://t.me/VodiWalker"
 
 logging.basicConfig(
@@ -1836,7 +1869,8 @@ def get_link_info(
         "vless_full": vless_link_for_link(link, uid, host),
         "sub": f"{get_scheme()}://{host}/sub/{uid}",
         "info": f"{get_scheme()}://{host}/info/{uid}",
-        "support": SUPPORT_USERNAME,
+        "support": get_support_username(),
+        "support_url": get_support_url(),
     }
 
 
@@ -1923,6 +1957,9 @@ async def load_state():
         if settings_data.get("tcp_public_port"):
             CONFIG["tcp_public_port"] = str(settings_data.get("tcp_public_port") or "").strip()
         CONFIG["bot_auto_start"] = bool(settings_data.get("bot_auto_start", False))
+        for _k in PERSISTED_EXTRA_SETTINGS:
+            if _k in settings_data:
+                CONFIG[_k] = settings_data[_k]
         try:
             import telegram_bot
             telegram_bot.configure(
@@ -2048,6 +2085,7 @@ async def save_state():
                     "bot_token": _bot_settings_snapshot().get("bot_token", ""),
                     "bot_admin_ids": _bot_settings_snapshot().get("admin_ids", ""),
                     "bot_auto_start": bool(CONFIG.get("bot_auto_start", False)),
+                    **{k: CONFIG[k] for k in PERSISTED_EXTRA_SETTINGS if k in CONFIG},
                 },
 
                 "saved_at":
@@ -2958,6 +2996,33 @@ async def api_telemetry(_=Depends(require_auth)):
 # ============================================================
 
 from pages import LOGIN_HTML
+from pages import ASSET_ICONS_B64, ASSET_VAZIR_B64, ASSET_QR_JS_B64, UI_CSS
+
+_ASSET_ICONS_BYTES = base64.b64decode(ASSET_ICONS_B64)
+_ASSET_VAZIR_BYTES = base64.b64decode(ASSET_VAZIR_B64)
+_ASSET_QR_BYTES = base64.b64decode(ASSET_QR_JS_B64)
+_ASSET_CACHE = {"Cache-Control": "public, max-age=604800, immutable"}
+
+
+@app.get("/assets/ui.css", include_in_schema=False)
+async def asset_ui_css():
+    return Response(UI_CSS, media_type="text/css; charset=utf-8", headers=_ASSET_CACHE)
+
+
+@app.get("/assets/qr.js", include_in_schema=False)
+async def asset_qr_js():
+    return Response(_ASSET_QR_BYTES, media_type="application/javascript; charset=utf-8", headers=_ASSET_CACHE)
+
+
+@app.get("/assets/icons.woff2", include_in_schema=False)
+async def asset_icons_font():
+    return Response(_ASSET_ICONS_BYTES, media_type="font/woff2", headers=_ASSET_CACHE)
+
+
+@app.get("/assets/vazir.woff2", include_in_schema=False)
+async def asset_vazir_font():
+    return Response(_ASSET_VAZIR_BYTES, media_type="font/woff2", headers=_ASSET_CACHE)
+
 
 
 def login_error_html(
@@ -3623,6 +3688,17 @@ async def tcp_ping(request: Request, _=Depends(require_auth)):
         return {"ok": False, "host": host, "port": port, "latency_ms": round((time.perf_counter()-started)*1000, 1), "message": f"اتصال ناموفق: {type(exc).__name__}: {str(exc)[:180]}"}
 
 
+@app.get("/api/name-suggestions")
+async def api_name_suggestions(request: Request, _=Depends(require_auth)):
+    base = request.query_params.get("base", "")
+    count = safe_int(request.query_params.get("n"), default=12, minimum=4, maximum=24)
+    return {
+        "ok": True,
+        "enabled": bool(CONFIG.get("name_style_enabled", True)),
+        "suggestions": name_suggestions(base, count),
+    }
+
+
 @app.post("/api/links")
 async def create_link_api(
     request: Request,
@@ -3823,9 +3899,9 @@ async def create_link_api(
         if connection_limit == 0: connection_limit = 1
     label_val = body.get("label", "")
     if cat.get("random_name") or not str(label_val).strip():
-        label_val = random_config_name()
+        label_val = auto_display_name()
     else:
-        label_val = sanitize_display_name(str(label_val))
+        label_val = decorate_label(sanitize_display_name(str(label_val)))
 
     uid, link = await make_link(
         label=label_val,
@@ -3914,6 +3990,77 @@ def emoji_for_index(i: int) -> str:
     return CONFIG_EMOJI_POOL[i % len(CONFIG_EMOJI_POOL)]
 
 
+# ---------------- اسم‌های خفن برای کانفیگ‌ها (دستی و خودکار) ----------------
+COOL_WORDS = [
+    "Tofan", "Barq", "Shahab", "Simorgh", "Parvaz", "Aftab", "Setareh", "Atash", "Sayeh", "Oghab",
+    "Palang", "Rostam", "Sohrab", "Kaveh", "Arash", "Zagros", "Alborz", "Damavand", "Ghoghnoos", "Azhdaha",
+    "Storm", "Thunder", "Phantom", "Ghost", "Nova", "Falcon", "Viper", "Titan", "Orbit", "Comet",
+    "Pulse", "Turbo", "Rocket", "Blaze", "Shadow", "Vortex", "Nebula", "Zenith", "Apex", "Matrix",
+    "Cyber", "Neon", "Sonic", "Hyper", "Warp", "Quantum", "Nitro", "Spark", "Wolf", "Dragon", "Phoenix", "Raven",
+]
+COOL_EMOJIS = [
+    "🚀", "⚡", "🔥", "🌪️", "🦅", "🐉", "🛡️", "💎", "🌌", "⭐", "✨", "🧿", "🏹", "⚔️", "👑", "💜",
+    "🌐", "🛰️", "🦁", "🐺", "🦋", "🌙", "☄️", "🎯", "💫", "🔮", "🧬", "🏴‍☠️", "🌋", "🪐", "🛸", "💠",
+    "🔱", "🧊", "🌀", "🎇",
+]
+COOL_STYLES = [
+    "{base}|{word}{emoji}",
+    "{emoji} {base} | {word}",
+    "{base} ✦ {word} {emoji}",
+    "{base}·{word}{emoji}{emoji2}",
+    "【{base}】{word}{emoji}",
+    "{base} ⟪{word}⟫ {emoji}",
+    "{emoji}{base}-{word}",
+    "{base} ▸ {word} {emoji}",
+]
+
+
+def is_name_styled(name: str) -> bool:
+    """اگر کاربر خودش اسم را تزئین کرده باشد (| یا اموجی/نماد)، دیگر دست نمی‌زنیم."""
+    text = str(name or "")
+    return "|" in text or any(ord(ch) >= 0x2190 for ch in text)
+
+
+def style_config_name(base: str, index: int | None = None, style: int | None = None) -> str:
+    """Vodiwalker → Vodiwalker|Tofan🚀 ؛ با index هر خروجی اسم/اموجی متفاوتی می‌گیرد."""
+    base = "".join(ch for ch in str(base or "") if ch.isprintable()).strip()[:32] or "VodiWalker"
+    rnd = secrets.SystemRandom()
+    if index is None:
+        word, emoji = rnd.choice(COOL_WORDS), rnd.choice(COOL_EMOJIS)
+        emoji2 = rnd.choice(COOL_EMOJIS)
+    else:
+        word = COOL_WORDS[index % len(COOL_WORDS)]
+        emoji = COOL_EMOJIS[(index * 5 + 1) % len(COOL_EMOJIS)]
+        emoji2 = COOL_EMOJIS[(index * 5 + 9) % len(COOL_EMOJIS)]
+    tpl = COOL_STYLES[(style or 0) % len(COOL_STYLES)]
+    return tpl.format(base=base, word=word, emoji=emoji, emoji2=emoji2)[:60]
+
+
+def decorate_label(base: str, index: int | None = None) -> str:
+    """اعمال استایل خودکار روی اسم (در صورت فعال بودن از تنظیمات و تزئین‌نشده بودن اسم)."""
+    if CONFIG.get("name_style_enabled", True) and not is_name_styled(base):
+        return style_config_name(base, index=index)
+    return base
+
+
+def auto_display_name() -> str:
+    """اسم خودکار خفن برای وقتی که کاربر چیزی ننوشته."""
+    if CONFIG.get("name_style_enabled", True):
+        return style_config_name("VodiWalker")
+    return auto_config_name()
+
+
+def name_suggestions(base: str, count: int = 12) -> list[str]:
+    base = sanitize_display_name(base, "VodiWalker")
+    rnd = secrets.SystemRandom()
+    words = rnd.sample(COOL_WORDS, min(count, len(COOL_WORDS)))
+    out: list[str] = []
+    for i, word in enumerate(words):
+        tpl = COOL_STYLES[0] if i < 4 else COOL_STYLES[i % len(COOL_STYLES)]
+        out.append(tpl.format(base=base[:32], word=word, emoji=rnd.choice(COOL_EMOJIS), emoji2=rnd.choice(COOL_EMOJIS))[:60])
+    return out
+
+
 def normalize_exit_ids(body: dict) -> list[str]:
     """لیست یکتا و اعتبارسنجی‌شده‌ی خروجی‌ها از بدنه‌ی درخواست.
     هم `outbound_proxy_ids: [...]` و هم `outbound_proxy_id: "..."` قبول می‌شود."""
@@ -3997,7 +4144,11 @@ async def create_combo_subscription(
             # همون اسمیه که کاربر انتخاب کرده (WS و XHTTP یک خروجی هم اموجی مشترک دارن).
             pair_emoji = emoji_for_index(_emoji_counter)
             _emoji_counter += 1
-            display_label = f"{pair_emoji} {display_name}"
+            display_label = (
+                decorate_label(display_name, _emoji_counter - 1)
+                if CONFIG.get("name_style_enabled", True) and not is_name_styled(display_name)
+                else f"{pair_emoji} {display_name}"
+            )
             for protocol, suffix in COMBO_MEMBERS:
                 uid, link = await make_link(
                     label=display_label,
@@ -4091,7 +4242,11 @@ async def add_combo_exits(sub_id: str, host: str, new_exits: list[str]) -> dict:
         tag = _exit_tag(infos[pid], used_tags)
         row = {"outbound_proxy_id": pid, "outbound": infos[pid], "tag": tag}
         pair_emoji = emoji_for_index(_existing_exit_count + _add_i)
-        display_label = f"{pair_emoji} {_combo_display_name}"
+        display_label = (
+            decorate_label(_combo_display_name, _existing_exit_count + _add_i)
+            if CONFIG.get("name_style_enabled", True) and not is_name_styled(_combo_display_name)
+            else f"{pair_emoji} {_combo_display_name}"
+        )
         for protocol, suffix in COMBO_MEMBERS:
             uid, link = await make_link(
                 label=display_label,
@@ -4190,7 +4345,7 @@ async def create_auto_link(
 
     protocol = normalize_protocol(body.get("protocol", DEFAULT_PROTOCOL))
     uid, link = await make_link(
-        label=auto_config_name(), limit_bytes=0, expires_at=None, note=note, protocol=protocol,
+        label=auto_display_name(), limit_bytes=0, expires_at=None, note=note, protocol=protocol,
         fingerprint=cfg["fp"], alpn=DEFAULT_ALPN_BY_PROTOCOL.get(protocol, ""), port=port,
         ip_limit=cfg["ip"], speed_limit_bytes=cfg["speed"], connection_limit=cfg["conn"],
         fragment=cfg["fragment"], outbound_proxy_id=exits[0],
@@ -5259,7 +5414,7 @@ def subscription_metadata_headers(used_bytes: int, limit_bytes: int, expires_at,
     return {
         "profile-title": quote(title, safe=""),
         "profile-web-page-url": info_url,
-        "support-url": SUPPORT_URL,
+        "support-url": get_support_url(),
         "profile-update-interval": "12",
         "subscription-userinfo": userinfo,
         "content-disposition": 'inline; filename="subscription.txt"',
@@ -5421,8 +5576,7 @@ async def subscription_portal(uuid: str, request: Request):
     html = r'''<!doctype html><html lang="fa" dir="rtl"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#070a12"><title>__LABEL__ · VodiWalker</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="/assets/ui.css"><script src="/assets/qr.js"></script>
 <style>
 :root{--bg:#070a12;--bg2:#0a0e19;--card:#0c111b;--card2:#101725;--line:rgba(255,255,255,.08);--text:#f8fafc;--muted:#8792a6;--soft:#59657a;--a:#8b5cf6;--a2:#6366f1;--c:#22d3ee;--g:#22c55e;--g2:#16a34a;--w:#f59e0b;--r:#ef4444;--shadow:0 24px 80px rgba(0,0,0,.35);--grid:rgba(255,255,255,.055);--url:#080c14;--radius:26px}
 body[data-theme="light"]{--bg:#f4f7fb;--bg2:#eef2f8;--card:#ffffff;--card2:#f7f9fc;--line:rgba(15,23,42,.10);--text:#0f172a;--muted:#526176;--soft:#748197;--shadow:0 20px 60px rgba(15,23,42,.10);--grid:rgba(15,23,42,.08);--url:#eef2f7}
@@ -5627,12 +5781,13 @@ body[data-theme="light"] .gauge:before{background:var(--card)}
   </div>
 </section>
 
+<section class="card" style="margin-top:14px"><div class="body" style="display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap"><div><b>💬 نیاز به کمک داری؟</b><small style="display:block;color:var(--muted);margin-top:2px">پیام مستقیم به پشتیبان <bdi dir="ltr">__SUPPORT__</bdi></small></div><a class="btn primary" href="__SUPPORT_URL__" target="_blank" rel="noopener"><i class="ti ti-brand-telegram"></i> پشتیبانی تلگرام</a></div></section>
 <section class="card" style="margin-top:14px" id="linkCard">
   <div class="head"><div><b>لینک اصلی اشتراک</b><small>برای وارد کردن در کلاینت سازگار</small></div>
     <button class="btn" style="flex:none;padding:8px 12px" onclick="toggleQr()"><i class="ti ti-qrcode"></i> QR</button>
   </div>
   <div class="body">
-    <div class="qr-wrap" id="qrWrap"><img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=__QR__" alt="QR"></div>
+    <div class="qr-wrap" id="qrWrap"><img id="qrMainImg" alt="QR" width="220" height="220"></div>
     <div class="url" id="subUrl">__RAW__</div>
     <div class="actions">
       <button class="btn primary" onclick="copyLink()"><i class="ti ti-copy"></i> کپی لینک</button>
@@ -5713,7 +5868,12 @@ function quickConnect(deepLink){
 }
 
 function toggleQr(){
-  document.getElementById('qrWrap').classList.toggle('show');
+  const w=document.getElementById('qrWrap');w.classList.toggle('show');
+  const im=document.getElementById('qrMainImg');
+  if(w.classList.contains('show')&&!im.getAttribute('src')&&window.qrcode){
+    try{const q=qrcode(0,'M');q.addData(document.getElementById('subUrl').textContent.trim());q.make();
+      im.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(q.createSvgTag(5,4));}catch(e){}
+  }
 }
 
 function applyTheme(){
@@ -5790,6 +5950,7 @@ refresh();setInterval(()=>{if(!document.hidden)refresh()},10000);
       '__IP_LIMIT__':('حداکثر '+str(ip_limit)+' IP') if ip_limit else 'بدون محدودیت','__RAW__':escape_html(raw_url),
       '__RAW_URL__':escape_html(raw_url),'__INFO_URL__':escape_html(info_url),'__QR__':qr,'__UUID__':escape_html(uuid),
       '__RAW_JS__':repr(raw_url),'__INITIAL__':escape_html(initial),
+      '__SUPPORT__':escape_html(get_support_username()),'__SUPPORT_URL__':escape_html(get_support_url()),
     }
     for k,v in replacements.items(): html=html.replace(k,v)
     return HTMLResponse(html)
@@ -5896,8 +6057,8 @@ async def info_page(uid: str, request: Request):
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#070a12"><meta name="color-scheme" content="dark"><title>__LABEL__ · VodiWalker</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+<link rel="stylesheet" href="/assets/ui.css">
+<script src="/assets/qr.js"></script>
 <style>
 :root{--bg:#060812;--panel:#0d1220;--panel2:#111827;--line:rgba(255,255,255,.08);--muted:#8b97ad;--text:#f5f7fb;--accent:#7c5cff;--cyan:#3dd8ff;--good:#2dd4a0;--warn:#f5b942;--danger:#ff6175}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Vazirmatn,Inter,sans-serif;background:var(--bg);color:var(--text)}body{overflow-x:hidden;background:radial-gradient(900px 420px at 85% -10%,rgba(124,92,255,.18),transparent 60%),radial-gradient(700px 380px at 5% 25%,rgba(61,216,255,.08),transparent 62%),linear-gradient(180deg,#070a12,#05070d)}
@@ -5927,7 +6088,8 @@ function toggleTheme(){document.body.classList.toggle('light');localStorage.setI
 (function(){if(localStorage.getItem('vw_portal_theme')==='light'){document.body.classList.add('light');document.documentElement.style.setProperty('--bg','#eef1f7');document.documentElement.style.setProperty('--panel','#fff');document.documentElement.style.setProperty('--panel2','#f5f7fb');document.documentElement.style.setProperty('--text','#151827');document.documentElement.style.setProperty('--muted','#667085')}})();
 function qrFor(v){try{const q=qrcode(0,'M');q.addData(v);q.make();document.getElementById('qrImg').src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(q.createSvgTag(4,4));document.getElementById('qrBox').innerHTML=q.createSvgTag(5,4);document.getElementById('qrText').textContent=v}catch(e){}}
 function openQr(){document.getElementById('qrModal').style.display='flex'}function closeQr(){document.getElementById('qrModal').style.display='none'}qrFor(VLESS);
-</script></body></html>"""
+</script><a href="__SUPPORT_URL__" target="_blank" rel="noopener" aria-label="support" style="position:fixed;inset-inline-start:14px;bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:40;display:flex;align-items:center;gap:8px;padding:11px 16px;border-radius:999px;background:linear-gradient(120deg,#0ea5e9,#22d3ee);color:#03121c;font:800 12px Vazirmatn,Tahoma,sans-serif;text-decoration:none;box-shadow:0 14px 30px -12px rgba(34,211,238,.8)"><i class="ti ti-brand-telegram" style="font-size:18px"></i> پشتیبانی <bdi dir="ltr">__SUPPORT__</bdi></a>
+</body></html>"""
     repl = {
         "__LABEL__": label_e, "__PROTOCOL__": protocol_e, "__UID_SHORT__": esc(uid[:18]+'…'),
         "__EXPIRY__": expiry_e, "__STATUS__": status_e, "__USED__": used_e, "__REMAINING__": rem_e,
@@ -5935,6 +6097,7 @@ function openQr(){document.getElementById('qrModal').style.display='flex'}functi
         "__IP__": ip_e, "__CONN__": conn_e, "__SPEED__": speed_e, "__FINGERPRINT__": esc(snapshot.get("fingerprint", "chrome")),
         "__UUID__": uid_e, "__SUB_URL__": sub_e, "__VLESS_URL__": vless_e, "__PCT__": str(pct),
         "__SUB_JS__": sub_js, "__VLESS_JS__": vless_js,
+        "__SUPPORT__": esc(get_support_username()), "__SUPPORT_URL__": esc(get_support_url()),
     }
     for k,v in repl.items(): html = html.replace(k,v)
     return HTMLResponse(html)
@@ -6618,14 +6781,145 @@ async def sub_group_subscription(
 # PUBLIC GROUP
 # ============================================================
 
-PUBLIC_SUB_HTML = r"""
-<!doctype html><html lang="fa" dir="rtl"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#080b12"><title>VodiWalker · Subscription</title>
+PUBLIC_SUB_HTML = r"""<!doctype html>
+<html lang="fa" dir="rtl" translate="no"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="google" content="notranslate"><meta name="theme-color" content="#070a14"><title>VodiWalker · اشتراک</title>
+<link rel="stylesheet" href="/assets/ui.css">
 <style>
-:root{--bg:#070a10;--panel:#0d121b;--panel2:#111823;--line:rgba(255,255,255,.08);--text:#f5f7fb;--muted:#8e9aae;--soft:#647086;--accent:#7c5cff;--cyan:#39d6ff;--green:#36d399;--red:#ff7088}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 10% 0%,rgba(124,92,255,.18),transparent 28%),radial-gradient(circle at 92% 8%,rgba(57,214,255,.09),transparent 25%),#070a10;color:var(--text);font-family:Inter,Tahoma,Arial,sans-serif}.wrap{width:min(1120px,calc(100% - 28px));margin:auto;padding:25px 0 70px}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}.brand{display:flex;align-items:center;gap:10px;font-weight:900}.mark{width:40px;height:40px;border-radius:13px;display:grid;place-items:center;background:linear-gradient(145deg,#17132a,#111b2a);border:1px solid rgba(124,92,255,.35);box-shadow:inset 0 0 25px rgba(124,92,255,.09)}.brand small{display:block;color:var(--soft);font-size:9px;margin-top:3px}.badge{padding:8px 12px;border-radius:999px;border:1px solid rgba(54,211,153,.22);background:rgba(54,211,153,.07);color:#7ceabf;font-size:10px;font-weight:800}.hero{border:1px solid var(--line);border-radius:28px;padding:27px;background:linear-gradient(135deg,rgba(17,24,35,.94),rgba(9,13,20,.9));box-shadow:0 30px 100px rgba(0,0,0,.24);margin-bottom:14px}.eyebrow{font-size:9px;color:#8995aa;letter-spacing:.15em;text-transform:uppercase;font-weight:900}.hero h1{font-size:clamp(28px,5vw,46px);margin:8px 0}.hero p{color:var(--muted);font-size:12px;line-height:2;margin:0;max-width:760px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-top:20px}.stat{padding:14px;border:1px solid var(--line);background:rgba(255,255,255,.018);border-radius:16px}.stat label{display:block;color:var(--soft);font-size:9px;margin-bottom:7px}.stat b{font-size:18px}.stat b,.mini b{direction:ltr;unicode-bidi:isolate;display:inline-block}.layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(300px,.6fr);gap:14px}.panel{border:1px solid var(--line);background:rgba(13,18,27,.84);border-radius:23px;overflow:hidden;box-shadow:0 20px 65px rgba(0,0,0,.17)}.head{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}.head b{font-size:12px}.head small{display:block;color:var(--soft);font-size:9px;margin-top:4px}.body{padding:17px}.url{padding:13px;border-radius:14px;background:#090d15;border:1px solid var(--line);direction:ltr;text-align:left;word-break:break-all;color:#b9c7ff;font:10px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace}.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}.btn{border:0;cursor:pointer;text-decoration:none;color:#fff;background:linear-gradient(135deg,#7c5cff,#4d7cff);padding:11px 13px;border-radius:12px;font-size:10px;font-weight:850;text-align:center}.btn.alt{background:#121925;border:1px solid var(--line);color:#dce2eb}.full{grid-column:1/-1}.link{padding:14px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.015);margin-bottom:9px}.link:last-child{margin-bottom:0}.linktop{display:flex;justify-content:space-between;gap:12px;align-items:center}.linkname{font-weight:850;font-size:12px}.proto{color:#a998ff;font-size:9px;margin-top:4px}.online{padding:5px 8px;border-radius:999px;font-size:8px;background:rgba(54,211,153,.08);color:#79e9bc;border:1px solid rgba(54,211,153,.18)}.offline{background:rgba(255,112,136,.08);color:#ff9aae;border-color:rgba(255,112,136,.18)}.linkmeta{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:12px}.mini{padding:9px;border-radius:11px;background:#0b1018;border:1px solid rgba(255,255,255,.05)}.mini small{display:block;color:var(--soft);font-size:8px}.mini b{display:block;margin-top:4px;font-size:10px}.qr{text-align:center}.qr img{width:190px;height:190px;background:#fff;padding:9px;border-radius:17px}.notice{margin-top:12px;padding:12px;border-radius:13px;background:rgba(57,214,255,.045);border:1px solid rgba(57,214,255,.11);color:#9eb3c9;font-size:9px;line-height:1.9}.footer{text-align:center;color:#566174;font-size:9px;padding-top:22px}.locked{max-width:500px;margin:14vh auto}.field{display:flex;gap:8px}.field input{flex:1;background:#0a0f17;border:1px solid var(--line);color:#fff;padding:12px;border-radius:12px;direction:ltr}.toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,20px);opacity:0;background:#121925;border:1px solid var(--line);padding:10px 14px;border-radius:12px;font-size:10px;transition:.2s}.toast.show{opacity:1;transform:translate(-50%,0)}@media(max-width:800px){.layout{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr 1fr}}@media(max-width:520px){.wrap{width:calc(100% - 18px);padding-top:12px}.hero{padding:20px}.stats{grid-template-columns:1fr 1fr}.linkmeta{grid-template-columns:1fr 1fr}.actions{grid-template-columns:1fr}}
-</style></head><body><main class="wrap"><div class="top"><div class="brand"><div class="mark">✦</div><div>VodiWalker<small>GROUP SUBSCRIPTION</small></div></div><div class="badge">● آماده استفاده</div></div><div id="app"></div><div class="footer">VodiWalker · Secure subscription delivery</div></main><div class="toast" id="toast">کپی شد</div>
+:root{--bg:#060813;--card:#0d1120;--card2:#121831;--line:rgba(148,130,255,.16);--line2:rgba(167,139,250,.38);--text:#f4f3ff;--mut:#9a98bd;--soft:#6a6890;--pri:#8b5cf6;--pri2:#6366f1;--cy:#22d3ee;--ok:#34d399;--warn:#fbbf24;--bad:#fb7185}
+@media(prefers-color-scheme:light){:root:not([data-theme=dark]){--bg:#f3f2fb;--card:#fff;--card2:#f6f5ff;--line:rgba(99,80,200,.14);--line2:rgba(99,80,200,.32);--text:#191635;--mut:#5d5a83;--soft:#8582aa}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0}body{min-height:100dvh;background:radial-gradient(60% 34% at 50% -4%,rgba(124,80,240,.30),transparent 70%),radial-gradient(50% 30% at 100% 30%,rgba(34,211,238,.09),transparent 70%),var(--bg);color:var(--text);font-family:'Vazirmatn',Tahoma,sans-serif;line-height:1.7}
+.wrap{width:min(720px,calc(100% - 24px));margin:0 auto;padding:calc(14px + env(safe-area-inset-top,0px)) 0 calc(96px + env(safe-area-inset-bottom,0px))}
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:900;font-size:16px}
+.mark{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;font-size:22px;background:linear-gradient(145deg,rgba(139,92,246,.35),rgba(34,211,238,.14));border:1px solid var(--line2)}
+.brand small{display:block;font-size:10px;color:var(--soft);font-weight:600;letter-spacing:.14em;font-family:Inter,sans-serif}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-size:11px;font-weight:800;border:1px solid}
+.chip.ok{color:var(--ok);border-color:rgba(52,211,153,.35);background:rgba(52,211,153,.08)}.chip.bad{color:var(--bad);border-color:rgba(251,113,133,.35);background:rgba(251,113,133,.08)}.chip.warn{color:var(--warn);border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.08)}
+.chip:before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 10px currentColor}
+.hero{position:relative;overflow:hidden;border:1px solid var(--line2);border-radius:26px;padding:20px;background:linear-gradient(160deg,var(--card2),var(--card));box-shadow:0 30px 80px -40px rgba(124,80,240,.6)}
+.hero:before{content:"";position:absolute;inset:-40% 30% auto -20%;height:220px;background:radial-gradient(closest-side,rgba(139,92,246,.35),transparent);pointer-events:none}
+.eyebrow{font-size:10px;letter-spacing:.16em;color:var(--soft);font-weight:800;font-family:Inter,sans-serif}
+.hero h1{position:relative;margin:4px 0 2px;font-size:clamp(22px,6vw,30px);font-weight:900;word-break:break-word}
+.hero p{position:relative;margin:0;color:var(--mut);font-size:12.5px}
+.ringrow{position:relative;display:flex;align-items:center;gap:18px;margin-top:18px}
+.ring{position:relative;width:132px;height:132px;flex:none}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring .bg{stroke:rgba(148,130,255,.16)}.ring .fg{stroke:url(#g);stroke-linecap:round;transition:stroke-dashoffset .9s cubic-bezier(.2,.8,.2,1)}
+.ring .mid{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
+.ring .mid b{font-size:26px;font-weight:900;font-family:Inter,sans-serif;direction:ltr}.ring .mid small{font-size:10px;color:var(--mut)}
+.kv{flex:1;display:grid;gap:8px;min-width:0}
+.kv div{display:flex;justify-content:space-between;gap:8px;align-items:center;padding:9px 12px;border-radius:13px;background:rgba(148,130,255,.07);border:1px solid var(--line);font-size:12px}
+.kv span{color:var(--mut)}.kv b{font-weight:800;direction:ltr;unicode-bidi:isolate;white-space:nowrap;font-family:Inter,'Vazirmatn',sans-serif}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.stat{padding:12px 8px;text-align:center;border-radius:16px;border:1px solid var(--line);background:var(--card)}
+.stat i{font-size:20px;color:var(--pri)}.stat b{display:block;font-size:16px;font-weight:900;margin-top:2px;direction:ltr;font-family:Inter,'Vazirmatn',sans-serif}.stat small{font-size:10.5px;color:var(--mut)}
+.sec{margin-top:14px;border:1px solid var(--line);border-radius:22px;background:var(--card);overflow:hidden}
+.sec-h{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 16px;border-bottom:1px solid var(--line);font-weight:900;font-size:14px}
+.sec-h small{display:block;color:var(--soft);font-size:10.5px;font-weight:500}.sec-h .n{font-size:11px;color:var(--mut);font-weight:700}
+.sec-b{padding:14px 16px}
+.url{padding:12px;border-radius:14px;background:rgba(0,0,0,.25);border:1px dashed var(--line2);direction:ltr;text-align:left;word-break:break-all;color:#c4b5fd;font:11.5px/1.7 ui-monospace,Consolas,monospace}
+@media(prefers-color-scheme:light){.url{background:#f1efff;color:#5b3fd0}}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid transparent;cursor:pointer;text-decoration:none;color:#fff;font-family:inherit;font-weight:800;font-size:13px;padding:12px 14px;border-radius:14px;background:linear-gradient(120deg,var(--pri2),var(--pri) 55%,#a855f7);box-shadow:0 12px 28px -14px rgba(124,80,240,.9);transition:transform .12s,filter .12s}
+.btn:hover{filter:brightness(1.1)}.btn:active{transform:scale(.97)}
+.btn.alt{background:var(--card2);color:var(--text);border-color:var(--line2);box-shadow:none}.btn.tg{background:linear-gradient(120deg,#0ea5e9,#22d3ee);color:#03121c;box-shadow:0 12px 28px -14px rgba(34,211,238,.8)}
+.btn.block{width:100%}.row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.apps{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}.apps a{font-size:11.5px;padding:8px 12px;border-radius:999px;border:1px solid var(--line2);background:rgba(139,92,246,.10);color:var(--text);text-decoration:none;font-weight:700}
+.apps a:hover{background:rgba(139,92,246,.24)}
+.qrbox{display:none;margin-top:12px;text-align:center}.qrbox.show{display:block}.qrbox img{width:200px;height:200px;background:#fff;padding:10px;border-radius:18px}
+.cfg{padding:14px;border:1px solid var(--line);border-radius:18px;background:var(--card2);margin-bottom:10px}.cfg:last-child{margin-bottom:0}
+.cfg-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.cfg-name{font-weight:900;font-size:14px;word-break:break-word;direction:ltr;text-align:right;unicode-bidi:plaintext}
+.proto{display:inline-block;margin-top:4px;padding:2px 9px;border-radius:999px;background:rgba(139,92,246,.14);color:#c4b5fd;font-size:10px;font-weight:800;font-family:Inter,sans-serif}
+.bar{height:7px;border-radius:99px;background:rgba(148,130,255,.14);margin:12px 0 8px;overflow:hidden}.bar i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--pri2),var(--cy))}
+.bar.hi i{background:linear-gradient(90deg,var(--warn),var(--bad))}
+.meta{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;font-size:11px}.meta div{padding:7px 8px;border-radius:11px;background:rgba(148,130,255,.07);border:1px solid var(--line)}
+.meta small{display:block;color:var(--soft);font-size:9.5px}.meta b{display:block;font-weight:800;direction:ltr;unicode-bidi:isolate;font-family:Inter,'Vazirmatn',sans-serif;font-size:11px}
+.empty{padding:30px 10px;text-align:center;color:var(--soft);font-size:12.5px}
+.support{margin-top:14px;padding:18px;border-radius:24px;border:1px solid rgba(34,211,238,.32);background:linear-gradient(150deg,rgba(34,211,238,.10),rgba(139,92,246,.10))}
+.support h3{margin:0 0 4px;font-size:15px;font-weight:900}.support p{margin:0 0 12px;color:var(--mut);font-size:12px}
+.foot{margin-top:18px;text-align:center;color:var(--soft);font-size:10.5px}
+.dock{position:fixed;inset:auto 0 0 0;display:flex;justify-content:center;padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));background:linear-gradient(transparent,var(--bg) 40%);pointer-events:none;z-index:20}
+.dock a{pointer-events:auto;width:min(720px,100%)}
+.locked{max-width:460px;margin:12vh auto 0}.field{display:flex;gap:8px;margin-top:12px}.field input{flex:1;min-width:0;background:var(--card2);border:1px solid var(--line2);color:var(--text);padding:12px;border-radius:12px;direction:ltr;font-family:inherit}
+.toast{position:fixed;left:50%;bottom:86px;transform:translate(-50%,16px);opacity:0;background:#1b1436;color:#fff;border:1px solid var(--line2);padding:10px 16px;border-radius:14px;font-size:12px;font-weight:700;transition:.2s;z-index:50;pointer-events:none}.toast.show{opacity:1;transform:translate(-50%,0)}
+.skel{height:180px;border-radius:26px;background:linear-gradient(90deg,var(--card),var(--card2),var(--card));background-size:200% 100%;animation:sk 1.2s infinite}@keyframes sk{to{background-position:-200% 0}}
+@media(max-width:430px){.ringrow{flex-direction:column;align-items:stretch}.ring{margin:0 auto}.meta{grid-template-columns:1fr 1fr}.meta div:last-child{grid-column:1/-1}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style></head><body>
+<main class="wrap">
+  <div class="top"><div class="brand"><div class="mark">🛡️</div><div>VodiWalker<small>SUBSCRIPTION</small></div></div><span class="chip ok" id="stateChip">آماده</span></div>
+  <div id="app"><div class="skel"></div></div>
+  <div class="foot">VodiWalker · اتصال به یک اینترنت بهتر 💜</div>
+</main>
+<div class="toast" id="toast"></div>
+<script src="/assets/qr.js"></script>
 <script>
-const key=location.pathname.split('/').pop();const qs=location.search||'';function esc(s){return String(s??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m]))}function toast(t){const e=document.getElementById('toast');e.textContent=t;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),1600)}async function copy(v){try{await navigator.clipboard.writeText(v);toast('لینک کپی شد ✓')}catch(e){prompt('کپی کنید:',v)}}function fmt(n){if(!n)return'0 B';const u=['B','KB','MB','GB','TB'];let i=0,x=Number(n)||0;while(x>=1024&&i<u.length-1){x/=1024;i++}return(x>=100?Math.round(x):x>=10?x.toFixed(1):x.toFixed(2))+' '+u[i]}function unlock(ev){ev.preventDefault();location.search='?pw='+encodeURIComponent(document.getElementById('pw').value)}function render(d){if(d.locked){document.getElementById('app').innerHTML='<section class="panel locked"><div class="body"><div class="eyebrow">Protected subscription</div><h2>'+esc(d.name||'اشتراک')+'</h2><p style="color:var(--muted);font-size:11px;line-height:2">این اشتراک با رمز محافظت می‌شود. رمز را وارد کنید تا اطلاعات و لینک‌ها نمایش داده شوند.</p><form class="field" onsubmit="unlock(event)"><input id="pw" type="password" placeholder="Subscription password"><button class="btn">ورود</button></form></div></section>';return}const links=d.links||[];const qr='https://api.qrserver.com/v1/create-qr-code/?size=220x220&data='+encodeURIComponent(d.sub_url||'');document.getElementById('app').innerHTML='<section class="hero"><div class="eyebrow">Subscription center</div><h1>'+esc(d.name||'Subscription')+'</h1><p>'+esc(d.desc||'مدیریت متمرکز کانفیگ‌ها و لینک اشتراک در یک صفحه حرفه‌ای.')+'</p><div class="stats"><div class="stat"><label>کانفیگ فعال</label><b>'+links.filter(x=>x.active).length+'</b></div><div class="stat"><label>اتصال فعال</label><b>'+Number(d.active_connections||0)+'</b></div><div class="stat"><label>مصرف کل</label><b>'+esc(d.total_used_fmt||'0 B')+'</b></div></div></section><section class="layout"><div class="panel"><div class="head"><div><b>کانفیگ‌های این اشتراک</b><small>وضعیت هر مسیر و مصرف آن</small></div><span style="color:var(--soft);font-size:9px">'+links.length+' مورد</span></div><div class="body">'+(links.length?links.map(l=>'<article class="link"><div class="linktop"><div><div class="linkname">'+esc(l.label||'Config')+'</div><div class="proto">'+esc(l.protocol||'VLESS')+'</div></div><span class="online '+(l.active?'':'offline')+'">'+(l.active?'فعال':'غیرفعال')+'</span></div><div class="linkmeta"><div class="mini"><small>مصرف</small><b>'+esc(l.used_fmt||'0 B')+' / '+esc(l.limit_fmt||'∞')+'</b></div><div class="mini"><small>اتصال</small><b>'+Number(l.connections||0)+' / '+(Number(l.connection_limit||0)||'∞')+'</b></div><div class="mini"><small>انقضا</small><b>'+esc((l.expires_at||'نامحدود').toString().slice(0,16))+'</b></div></div><div class="actions"><button class="btn" onclick="copy('+esc(JSON.stringify(l.sub_url||''))+')">کپی ساب</button><a class="btn alt" href="'+esc(l.info_url||'#')+'">جزئیات</a></div></article>').join(''):'<div style="padding:35px;text-align:center;color:var(--soft);font-size:11px">کانفیگ فعالی برای این اشتراک وجود ندارد.</div>')+'</div></div><aside class="panel"><div class="head"><div><b>لینک اصلی اشتراک</b><small>مناسب برای کلاینت‌های سازگار</small></div></div><div class="body"><div class="qr"><img src="'+qr+'" alt="QR" onerror="this.remove()"></div><div class="url">'+esc(d.sub_url||'')+'</div><div class="actions"><button class="btn" onclick="copy('+esc(JSON.stringify(d.sub_url||''))+')">کپی لینک</button><a class="btn alt" href="'+esc(d.sub_url||'#')+'">دریافت</a></div><div class="notice">برای استفاده، لینک بالا را در بخش Subscription کلاینت خود وارد کنید. لینک خام و API بدون تغییر باقی می‌مانند تا سازگاری حفظ شود.</div></div></aside></section>'}async function load(){try{const r=await fetch('/api/public/sub/'+encodeURIComponent(key)+qs,{cache:'no-store'});const d=await r.json();if(!r.ok)throw Error(d.detail||'خطا');render(d)}catch(e){document.getElementById('app').innerHTML='<section class="panel"><div class="body"><h2>اشتراک پیدا نشد</h2><p style="color:var(--muted)">لینک اشتراک منقضی شده، حذف شده یا در دسترس نیست.</p></div></section>'}}load();
+var KEY=location.pathname.split('/').pop(),QS=location.search||'';
+function $(i){return document.getElementById(i)}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function toast(t){var e=$('toast');e.textContent=t;e.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(function(){e.classList.remove('show')},1700)}
+function copyText(v){
+  function fallback(){var a=document.createElement('textarea');a.value=v;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();try{document.execCommand('copy');toast('کپی شد ✓')}catch(e){prompt('کپی کنید:',v)}a.remove()}
+  if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(v).then(function(){toast('کپی شد ✓')},fallback)}else fallback()
+}
+function fmt(n){n=Number(n)||0;if(!n)return'0 B';var u=['B','KB','MB','GB','TB'],i=0;while(n>=1024&&i<u.length-1){n/=1024;i++}return(n>=100?Math.round(n):n>=10?n.toFixed(1):n.toFixed(2))+' '+u[i]}
+function daysLeft(iso){if(!iso)return null;var t=new Date(String(iso).replace(' ','T')).getTime();if(isNaN(t))return null;return Math.ceil((t-Date.now())/864e5)}
+function qrSvg(v){try{var q=qrcode(0,'M');q.addData(v);q.make();return'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(q.createSvgTag(5,4))}catch(e){return''}}
+function b64(s){try{return btoa(unescape(encodeURIComponent(s)))}catch(e){return''}}
+function unlock(ev){ev.preventDefault();location.search='?pw='+encodeURIComponent($('pw').value)}
+function toggleQr(){var b=$('qrbox');b.classList.toggle('show');if(b.classList.contains('show')&&!b.dataset.done){b.dataset.done=1;$('qrimg').src=qrSvg(window.SUBURL)}}
+function render(d){
+  var app=$('app');
+  if(d.locked){
+    app.innerHTML='<section class="sec locked"><div class="sec-b"><div class="eyebrow">PROTECTED</div><h2 style="margin:4px 0 6px">🔒 '+esc(d.name||'اشتراک')+'</h2><p style="color:var(--mut);font-size:12.5px;margin:0">این اشتراک با رمز محافظت می‌شود. رمز را وارد کنید تا اطلاعات و لینک‌ها نمایش داده شوند.</p><form class="field" id="pwForm"><input id="pw" type="password" placeholder="رمز اشتراک" autocomplete="off"><button class="btn">ورود</button></form></div></section>';
+    $('pwForm').addEventListener('submit',unlock);$('stateChip').className='chip warn';$('stateChip').textContent='قفل';return
+  }
+  var links=d.links||[],url=d.sub_url||'';window.SUBURL=url;
+  var used=Number(d.total_used_bytes||0),limit=Number(d.total_limit_bytes||0);
+  var pct=limit>0?Math.min(100,Math.round(used/limit*1000)/10):0;
+  var rem=limit>0?Math.max(0,limit-used):null;
+  var dl=daysLeft(d.expires_at),activeN=links.filter(function(x){return x.active}).length;
+  var expired=(dl!==null&&dl<=0)||(limit>0&&used>=limit)||(links.length>0&&activeN===0);
+  var chip=$('stateChip');chip.className='chip '+(expired?'bad':(dl!==null&&dl<=3?'warn':'ok'));chip.textContent=expired?'غیرفعال / تمام‌شده':(dl!==null&&dl<=3?'رو به پایان':'فعال');
+  var C=2*Math.PI*52,off=C*(1-pct/100);
+  var name=encodeURIComponent(d.name||'VodiWalker'),enc=encodeURIComponent(url);
+  var apps=[['Hiddify','hiddify://import/'+url+'#'+name],['v2rayNG','v2rayng://install-sub?url='+enc+'&name='+name],['Streisand','streisand://import/'+url],['Shadowrocket','shadowrocket://add/sub://'+b64(url)],['sing-box','sing-box://import-remote-profile?url='+enc+'#'+name]];
+  var cfgs=links.length?links.map(function(l){
+    var lp=Number(l.limit_bytes)>0?Math.min(100,Math.round(Number(l.used_bytes||0)/Number(l.limit_bytes)*100)):0;
+    return '<article class="cfg"><div class="cfg-top"><div><div class="cfg-name">'+esc(l.label||'Config')+'</div><span class="proto">'+esc(String(l.protocol||'vless').toUpperCase())+'</span></div><span class="chip '+(l.active?'ok':'bad')+'">'+(l.active?'فعال':'غیرفعال')+'</span></div>'
+    +'<div class="bar'+(lp>85?' hi':'')+'"><i style="width:'+(Number(l.limit_bytes)>0?lp:100)+'%"></i></div>'
+    +'<div class="meta"><div><small>مصرف</small><b>'+esc(l.used_fmt||'0 B')+' / '+esc(l.limit_fmt||'∞')+'</b></div><div><small>اتصال آنلاین</small><b>'+Number(l.connections||0)+' / '+(Number(l.connection_limit||0)||'∞')+'</b></div><div><small>انقضا</small><b>'+esc(String(l.expires_at||'نامحدود').slice(0,10))+'</b></div></div>'
+    +'<div class="row"><button class="btn alt" data-copy="'+esc(l.vless_link||'')+'">📋 کپی کانفیگ</button><button class="btn alt" data-copy="'+esc(l.sub_url||'')+'">🔗 کپی ساب</button></div></article>'
+  }).join(''):'<div class="empty">هنوز کانفیگی برای این اشتراک ثبت نشده است.</div>';
+  app.innerHTML=
+   '<section class="hero"><div class="eyebrow">SUBSCRIPTION CENTER</div><h1>'+esc(d.name||'اشتراک')+'</h1><p>'+esc(d.desc||'همه‌ی کانفیگ‌ها، مصرف و زمان باقی‌مانده‌ات در یک صفحه ✨')+'</p>'
+   +'<div class="ringrow"><div class="ring"><svg viewBox="0 0 120 120"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8b5cf6"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs><circle class="bg" cx="60" cy="60" r="52" fill="none" stroke-width="10"/><circle class="fg" cx="60" cy="60" r="52" fill="none" stroke-width="10" stroke-dasharray="'+C.toFixed(1)+'" stroke-dashoffset="'+C.toFixed(1)+'" id="ringFg"/></svg><div class="mid"><b>'+(limit>0?pct+'%':'∞')+'</b><small>'+(limit>0?'مصرف‌شده':'نامحدود')+'</small></div></div>'
+   +'<div class="kv"><div><span>باقی‌مانده</span><b>'+(rem===null?'نامحدود ♾️':fmt(rem))+'</b></div><div><span>مصرف‌شده</span><b>'+fmt(used)+'</b></div><div><span>حجم کل</span><b>'+(limit>0?fmt(limit):'نامحدود')+'</b></div></div></div></section>'
+   +'<div class="stats"><div class="stat"><i class="ti ti-calendar-time"></i><b>'+(dl===null?'∞':(dl<=0?'0':dl))+'</b><small>روز باقی‌مانده</small></div><div class="stat"><i class="ti ti-stack-2"></i><b>'+activeN+'/'+links.length+'</b><small>کانفیگ فعال</small></div><div class="stat"><i class="ti ti-plug-connected"></i><b>'+Number(d.active_connections||0)+'</b><small>اتصال آنلاین</small></div></div>'
+   +'<section class="sec"><div class="sec-h"><div>لینک اشتراک<small>این لینک را در اپ خود وارد کن</small></div><span class="n">🔗</span></div><div class="sec-b"><div class="url">'+esc(url)+'</div>'
+   +'<div class="row"><button class="btn" data-copy="'+esc(url)+'">📋 کپی لینک اشتراک</button><button class="btn alt" id="qrBtn">▦ نمایش QR</button></div>'
+   +'<div class="qrbox" id="qrbox"><img id="qrimg" alt="QR"></div>'
+   +'<div style="margin-top:14px;font-size:12px;color:var(--mut);font-weight:700">⚡ افزودن با یک کلیک به اپ:</div><div class="apps">'+apps.map(function(a){return'<a href="'+esc(a[1])+'">'+a[0]+'</a>'}).join('')+'</div></div></section>'
+   +'<section class="sec"><div class="sec-h"><div>کانفیگ‌های اشتراک<small>وضعیت و مصرف هر مسیر</small></div><span class="n">'+links.length+' مورد</span></div><div class="sec-b">'+cfgs+'</div></section>'
+   +'<section class="support"><h3>💬 نیاز به کمک داری؟</h3><p>برای راهنمایی، تمدید یا رفع مشکل مستقیم به پشتیبانی پیام بده.</p><a class="btn tg block" target="_blank" rel="noopener" href="'+esc(d.support_url||'#')+'">✈️ پیام به پشتیبان <bdi dir="ltr">'+esc(d.support||'')+'</bdi></a>'
+   +(d.channel_url?'<a class="btn alt block" style="margin-top:8px" target="_blank" rel="noopener" href="'+esc(d.channel_url)+'">📢 عضویت در کانال اطلاع‌رسانی</a>':'')+'</section>';
+  document.querySelectorAll('[data-copy]').forEach(function(b){b.addEventListener('click',function(){copyText(b.getAttribute('data-copy'))})});
+  $('qrBtn').addEventListener('click',toggleQr);
+  requestAnimationFrame(function(){requestAnimationFrame(function(){var f=$('ringFg');if(f)f.style.strokeDashoffset=off.toFixed(1)})});
+  var dock=document.querySelector('.dock');if(dock)dock.remove();
+  if(d.support_url){var dk=document.createElement('div');dk.className='dock';dk.innerHTML='<a class="btn tg" target="_blank" rel="noopener" href="'+esc(d.support_url)+'">✈️ پشتیبانی تلگرام <bdi dir="ltr">'+esc(d.support||'')+'</bdi></a>';document.body.appendChild(dk)}
+}
+function load(first){
+  fetch('/api/public/sub/'+encodeURIComponent(KEY)+QS,{cache:'no-store'}).then(function(r){return r.json().then(function(j){if(!r.ok)throw Error(j.detail||'خطا');return j})}).then(function(d){
+    if(!first&&!d.locked){var y=window.scrollY;render(d);window.scrollTo(0,y)}else render(d)
+  }).catch(function(){
+    if(first)$('app').innerHTML='<section class="sec locked"><div class="sec-b" style="text-align:center"><div style="font-size:40px">🔍</div><h2 style="margin:6px 0">اشتراک پیدا نشد</h2><p style="color:var(--mut);font-size:12.5px;margin:0">لینک منقضی شده، حذف شده یا در دسترس نیست. برای کمک با پشتیبانی تماس بگیر.</p></div></section>'
+  })
+}
+load(true);setInterval(function(){if(!document.hidden&&!(document.activeElement&&document.activeElement.tagName==='INPUT'))load(false)},30000);
 </script></body></html>
 """
 
@@ -6874,6 +7168,12 @@ async def public_sub_data(
         for item in links_out
     )
 
+    # حجم کل: اگر حتی یک کانفیگ نامحدود باشد، کل اشتراک نامحدود حساب می‌شود
+    _limits = [int(item.get("limit_bytes") or 0) for item in links_out]
+    _sub_total_limit = sum(_limits) if _limits and all(x > 0 for x in _limits) else 0
+    _exps = [str(item.get("expires_at") or "") for item in links_out]
+    _sub_expires_at = max(_exps) if _exps and all(_exps) else None
+
     return {
         "locked": False,
 
@@ -6907,7 +7207,22 @@ async def public_sub_data(
             ),
 
         "support":
-            SUPPORT_USERNAME,
+            get_support_username(),
+
+        "support_url":
+            get_support_url(),
+
+        "channel_url":
+            get_channel_url() if _clean_tg_username(CONFIG.get("channel_username")) else "",
+
+        "total_used_bytes":
+            total_used,
+
+        "total_limit_bytes":
+            _sub_total_limit,
+
+        "expires_at":
+            _sub_expires_at,
 
         "links":
             links_out,
@@ -8159,6 +8474,9 @@ async def api_get_settings(request: Request, token=Depends(require_owner)):
         "sub_info_line_enabled": bool(CONFIG.get("sub_info_line_enabled", True)),
         "sub_info_line_show_volume": bool(CONFIG.get("sub_info_line_show_volume", True)),
         "sub_info_line_show_expiry": bool(CONFIG.get("sub_info_line_show_expiry", True)),
+        "support_username": _clean_tg_username(CONFIG.get("support_username")),
+        "channel_username": _clean_tg_username(CONFIG.get("channel_username")),
+        "name_style_enabled": bool(CONFIG.get("name_style_enabled", True)),
     }
 
 
@@ -8195,7 +8513,20 @@ async def api_update_settings(request: Request, token=Depends(require_owner)):
             raise HTTPException(status_code=400, detail="پورت عمومی TCP باید عدد باشد")
         CONFIG["tcp_public_port"] = raw_port
 
+    if "support_username" in body:
+        value = _clean_tg_username(body.get("support_username"))
+        if value and not _TG_USER_RE.match(value):
+            raise HTTPException(status_code=400, detail="آیدی تلگرام معتبر نیست (۵ تا ۳۲ کاراکتر: حروف انگلیسی، عدد و _ ؛ مثال: @MySupport)")
+        CONFIG["support_username"] = value
+
+    if "channel_username" in body:
+        value = _clean_tg_username(body.get("channel_username"))
+        if value and not _TG_USER_RE.match(value):
+            raise HTTPException(status_code=400, detail="آیدی کانال معتبر نیست (مثال: @MyChannel)")
+        CONFIG["channel_username"] = value
+
     for flag in (
+        "name_style_enabled",
         "sub_remark_show_name", "sub_remark_show_volume", "sub_remark_show_id", "sub_remark_show_inbound",
         "sub_info_line_enabled", "sub_info_line_show_volume", "sub_info_line_show_expiry",
     ):
